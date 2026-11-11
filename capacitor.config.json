@@ -1,0 +1,14 @@
+{
+	"appId": "com.manzel.app",
+	"appName": "منزّل",
+	"webDir": "www",
+	"server": {
+		"url": "https://GITHUB_USER.github.io/manzel/",
+		"cleartext": false,
+		"errorPath": "offline.html",
+		"androidScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": false
+	}
+}

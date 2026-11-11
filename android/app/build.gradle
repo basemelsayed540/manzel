@@ -1,0 +1,101 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+// رقم الإصدار يُقرأ من ملف VERSION في جذر المشروع (مثال: 1.0.1 => versionCode 10001)
+def versionFile = file('../../VERSION')
+def vName = versionFile.exists() ? versionFile.text.trim() : '1.0.0'
+def vParts = vName.tokenize('.').collect { it.toInteger() }
+def vCode = vParts[0] * 10000 + vParts[1] * 100 + vParts[2]
+
+// owner/repo يُمرَّر من GitHub Actions (-PgithubRepo=owner/repo) ويُستخدم لفحص تحديثات الـAPK
+def githubRepo = project.findProperty('githubRepo') ?: ''
+
+android {
+    namespace "com.manzel.app"
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId "com.manzel.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode vCode
+        versionName vName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "GITHUB_REPO", "\"${githubRepo}\""
+        // أجهزة ARM فقط (كل الهواتف الحديثة) لتقليل حجم الـAPK
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
+        aaptOptions {
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    buildFeatures { buildConfig true }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    // مطلوب لمكتبة youtubedl-android (تفك ملفات python/ffmpeg من مجلد المكتبات)
+    packaging { jniLibs { useLegacyPackaging = true } }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    signingConfigs {
+        release {
+            def ksPath = System.getenv('KEYSTORE_PATH')
+            if (ksPath) {
+                storeFile file(ksPath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // بدون keystore (بناء محلي) يُوقَّع بمفتاح debug — لا يصلح للتحديث فوق نسخة CI
+            signingConfig System.getenv('KEYSTORE_PATH') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+
+    // محرك التحميل: yt-dlp + ffmpeg
+    implementation "io.github.junkfood02.youtubedl-android:library:0.18.1"
+    implementation "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1"
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

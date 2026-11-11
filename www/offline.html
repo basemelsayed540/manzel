@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3730A3">
+<title>منزّل — لا يوجد اتصال</title>
+<style>
+  :root{color-scheme:light dark}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+       font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:#F5F6FA;color:#111827;text-align:center}
+  @media (prefers-color-scheme:dark){body{background:#0F1220;color:#EEF0F7}.card{background:#181C2E!important;border-color:#2A3050!important}.muted{color:#A7AEC6!important}}
+  .card{max-width:360px;width:100%;background:#fff;border:1px solid #E3E6EE;border-radius:20px;padding:28px 22px}
+  .logo{width:72px;height:72px;margin:0 auto 14px;border-radius:20px;background:linear-gradient(160deg,#4F46E5,#7C3AED);display:grid;place-items:center}
+  h1{font-size:20px;margin:0 0 8px}
+  p{margin:0 0 18px;line-height:1.7}
+  .muted{color:#5B6475;font-size:14px}
+  button{min-height:48px;width:100%;border:0;border-radius:14px;background:#4F46E5;color:#fff;font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+  <main class="card" role="alert">
+    <div class="logo" aria-hidden="true">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+    </div>
+    <h1>لا يوجد اتصال بالإنترنت</h1>
+    <p>منزّل يحتاج إنترنت لتحميل واجهته وللتحميل من المواقع. تأكد من الاتصال ثم أعد المحاولة.</p>
+    <button type="button" onclick="location.reload()">إعادة المحاولة</button>
+    <p class="muted" style="margin:14px 0 0">لو الاتصال شغال والمشكلة مستمرة، جرّب لاحقاً.</p>
+  </main>
+</body>
+</html>
