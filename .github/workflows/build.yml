@@ -1,0 +1,124 @@
+name: build-and-release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write      # لنشر Release باسم latest-apk
+  pages: write         # لنشر الواجهة على GitHub Pages
+  id-token: write
+
+concurrency:
+  group: manzel-build
+  cancel-in-progress: false
+
+env:
+  # كلمة مرور ملف التوقيع ثابتة هنا لأن السرّ الحقيقي هو ملف الـkeystore نفسه (Secret: KEYSTORE_B64)
+  KEYSTORE_PASSWORD: manzel-ks-2026
+  KEY_PASSWORD: manzel-ks-2026
+  KEY_ALIAS: manzel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: التحقق من وجود سرّ التوقيع
+        env:
+          KS: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS" ]; then
+            echo "::error::السرّ KEYSTORE_B64 غير موجود. أضفه من Settings > Secrets and variables > Actions (انظر README.md)."
+            exit 1
+          fi
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/manzel.p12"
+          keytool -list -keystore "$RUNNER_TEMP/manzel.p12" -storetype PKCS12 -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/manzel.p12" >> "$GITHUB_ENV"
+
+      - name: تثبيت الاعتمادات
+        run: npm ci
+
+      - name: ضبط الإصدارات ورابط الواجهة
+        run: |
+          VERSION="$(cat VERSION | tr -d '[:space:]')"
+          WEB="$VERSION.${{ github.run_number }}"
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          PAGES_URL="https://${OWNER}.github.io/${REPO}/"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "WEB=$WEB" >> "$GITHUB_ENV"
+          echo "PAGES_URL=$PAGES_URL" >> "$GITHUB_ENV"
+          # رابط الواجهة داخل التطبيق
+          sed -i "s#https://GITHUB_USER.github.io/manzel/#${PAGES_URL}#" capacitor.config.json
+          # ختم إصدار الواجهة (كسر الكاش + عرض الرقم في الإعدادات)
+          sed -i -E "s#\?v=[0-9A-Za-z.]+\"#?v=${WEB}\"#g" www/index.html
+          echo "window.MANZEL_WEB_VERSION = \"${WEB}\";" > www/js/version.js
+          cat > www/version.json <<JSON
+          { "web": "${WEB}", "files": ["index.html","css/app.css","css/fonts.css","js/version.js","js/native.js","js/app.js","version.json"] }
+          JSON
+          sed -i 's/^          //' www/version.json
+          cat www/version.json
+
+      - name: مزامنة Capacitor
+        run: npx cap sync android
+
+      - name: بناء APK موقّع
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PgithubRepo="$GITHUB_REPOSITORY"
+
+      - name: فحص التوقيع وتجهيز ملفات الإصدار
+        run: |
+          APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs "$APK" | head -5
+          mkdir -p out
+          cp "$APK" out/Manzel.apk
+          IFS=. read MA MI PA <<< "$VERSION"
+          CODE=$((MA*10000 + MI*100 + PA))
+          SHA="$(sha256sum out/Manzel.apk | cut -d' ' -f1)"
+          cat > out/version.json <<JSON
+          { "versionCode": ${CODE}, "versionName": "${VERSION}", "apkUrl": "https://github.com/${GITHUB_REPOSITORY}/releases/download/latest-apk/Manzel.apk", "sha256": "${SHA}", "notes": "" }
+          JSON
+          sed -i 's/^          //' out/version.json
+          cat out/version.json
+          ls -la out
+
+      - name: نشر Release باسم latest-apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest-apk --cleanup-tag --yes || true
+          gh release create latest-apk out/Manzel.apk out/version.json \
+            --target "$GITHUB_SHA" \
+            --title "منزّل $VERSION (واجهة $WEB)" \
+            --notes "أحدث APK موقّع. التحديث داخل التطبيق يقرأ version.json من هذا الإصدار."
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+
+  deploy-pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
