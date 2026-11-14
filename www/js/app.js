@@ -4,6 +4,7 @@
 
   var WEB_VERSION = window.MANZEL_WEB_VERSION || 'dev';
   var ROWS_PER_TAB = 5;
+  var MAX_ROWS = 20;
   var HISTORY_MAX = 50;
   var DEFAULT_FILES = ['index.html', 'css/app.css', 'css/fonts.css', 'js/version.js', 'js/native.js', 'js/app.js', 'version.json'];
   var NO_RETRY = { private: 1, drm: 1, age: 1, unsupported: 1, live: 1, wrongtab: 1, geo: 1 };
@@ -58,7 +59,9 @@
     { id: 'instagram', name: 'انستجرام', hosts: /(^|\.)(instagram\.com|instagr\.am)$/,
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><path d="M16.8 7.2h.01"/></svg>' },
     { id: 'tiktok', name: 'تيك توك', hosts: /(^|\.)(tiktok\.com)$/,
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' }
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' },
+    { id: 'web', name: 'أي رابط', hosts: null, sub: 'أي موقع من الإنترنت',
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg>' }
   ];
   var PBYID = {}; PLATFORMS.forEach(function (p) { PBYID[p.id] = p; });
 
@@ -73,7 +76,7 @@
   function platformOfUrl(u) {
     try {
       var h = new URL(u).hostname.toLowerCase();
-      for (var i = 0; i < PLATFORMS.length; i++) if (PLATFORMS[i].hosts.test(h)) return PLATFORMS[i].id;
+      for (var i = 0; i < PLATFORMS.length; i++) if (PLATFORMS[i].hosts && PLATFORMS[i].hosts.test(h)) return PLATFORMS[i].id;
     } catch (e) { /* ليس رابطاً */ }
     return null;
   }
@@ -100,7 +103,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         if (!r.url && r.state === 'empty') return;
-        o[r.id] = { url: r.url, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
+        o[r.id] = { url: r.url, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
       });
     });
     lsSet('manzel.rows', o);
@@ -186,18 +189,19 @@
 
   function makeRow(p, n) {
     var r = {
-      id: p.id + '-' + n, p: p, n: n, url: '', state: 'empty', info: null, qid: settings.quality, story: false,
+      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', state: 'empty', info: null, qid: settings.quality, story: false,
       jobId: null, percent: 0, speed: '', eta: -1, stage: 'queued', result: null, err: null, token: 0, autoStart: false, toastA: null, started: 0
     };
     var s = el('section', 'row');
     s.setAttribute('data-p', p.id);
     s.innerHTML =
-      '<div class="row-top"><span class="num"></span><span class="chip"></span></div>' +
+      '<div class="row-top"><span class="num"></span><span class="row-top-end"><span class="chip"></span><button type="button" class="icon-btn rm" aria-label="حذف هذا المربع" hidden>' + I.trash + '</button></span></div>' +
       '<div class="field"><input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ألصق رابط الفيديو هنا" aria-label="رابط الفيديو">' +
       '<button type="button" class="icon-btn paste">' + I.clip + '<span>لصق</span></button>' +
       '<button type="button" class="icon-btn clear" aria-label="مسح">' + I.x + '</button></div>' +
       '<div class="preview"><div class="thumb">' + I.film + '<img alt="" referrerpolicy="no-referrer" hidden><span class="dur" hidden></span></div>' +
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
+      '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
       '<div class="controls"><button type="button" class="btn quality" aria-haspopup="dialog"><span class="ql"></span>' + I.chev + '</button>' +
       '<button type="button" class="btn primary dl">' + I.down + '<span>تحميل</span></button></div>' +
       '<div class="progress"><div class="stage"></div><div class="bar"><i></i></div>' +
@@ -215,8 +219,9 @@
       '<button type="button" class="btn ghost clear2">مسح</button></div></div>';
     r.el = s;
     r.q = function (sel) { return $(sel, s); };
-    r.q('.num').textContent = n;
-    r.input = r.q('input');
+    r.input = r.q('.field input');
+    r.nameInput = r.q('.nm');
+    if (p.id === 'web') r.input.placeholder = 'ألصق أي رابط فيديو هنا';
     bindRow(r);
     return r;
   }
@@ -239,6 +244,8 @@
         onUrlChanged(r, t, true);
       }, function () { toast('error', 'تعذّر قراءة الحافظة. الصق الرابط يدوياً في المربع.'); });
     });
+    r.nameInput.addEventListener('input', function () { r.customName = r.nameInput.value; persistRows(); });
+    r.q('.rm').addEventListener('click', function () { removeRow(r); });
     r.q('.clear').addEventListener('click', function () { resetRow(r); });
     r.q('.clear2').addEventListener('click', function () { resetRow(r); });
     r.q('.fresh').addEventListener('click', function () { resetRow(r); });
@@ -269,6 +276,9 @@
     r.input.disabled = busy;
     r.q('.paste').disabled = busy; r.q('.clear').disabled = busy;
 
+    if (r.nameInput.value !== r.customName) r.nameInput.value = r.customName;
+    r.nameInput.placeholder = r.info && r.info.title ? 'اسم الملف: ' + r.info.title : 'اسم الملف (اختياري)';
+    r.nameInput.disabled = busy;
     // المعاينة
     var img = r.q('.thumb img'), dur = r.q('.dur');
     if (r.info) {
@@ -333,7 +343,7 @@
     r.token++;
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     if (r.jobId) { delete rowByJob[r.jobId]; }
-    r.url = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
+    r.url = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
     r.autoStart = false; r.qid = settings.quality;
     setState(r, 'empty');
   }
@@ -342,7 +352,7 @@
   function onUrlChanged(r, raw, immediate) {
     var url = extractUrl(raw) || String(raw || '').trim();
     if (url === r.url && (r.info || r.state === 'analyzing')) { render(r); return; }
-    r.token++; r.info = null; r.result = null; r.err = null;
+    r.token++; r.info = null; r.result = null; r.err = null; r.customName = '';
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     r.url = url;
     if (!url) { r.autoStart = false; setState(r, 'empty'); return; }
@@ -353,11 +363,13 @@
     var url = r.url;
     var found = platformOfUrl(url);
     if (!/^https?:\/\//i.test(url)) return failRow(r, 'unsupported', 'هذا ليس رابطاً صحيحاً. انسخ الرابط كاملاً (يبدأ بـ https://).');
-    if (found && found !== r.p.id) {
-      return failRow(r, 'wrongtab', 'هذا رابط ' + PBYID[found].name + '. افتح تبويب «' + PBYID[found].name + '» ثم ألصقه هناك.');
-    }
-    if (!found) {
-      return failRow(r, 'unsupported', 'الرابط لا يبدو رابط ' + r.p.name + '. تأكد من نسخ رابط الفيديو من التطبيق.');
+    if (r.p.id !== 'web') {
+      if (found && found !== r.p.id) {
+        return failRow(r, 'wrongtab', 'هذا رابط ' + PBYID[found].name + '. افتح تبويب «' + PBYID[found].name + '» ثم ألصقه هناك.');
+      }
+      if (!found) {
+        return failRow(r, 'unsupported', 'الرابط لا يبدو رابط ' + r.p.name + '. تأكد من نسخ رابط الفيديو من التطبيق، أو استخدم تبويب «أي رابط».');
+      }
     }
     var tok = ++r.token;
     r.err = null;
@@ -405,7 +417,7 @@
       if (p && p.granted === false) throw Object.assign(new Error('بدون صلاحية التخزين لا يمكن حفظ الفيديو. اسمح بها من إعدادات الهاتف ثم أعد المحاولة.'), { code: 'permission' });
       return Native.call('download', {
         id: jobId, url: r.url, quality: q.id, formatId: q.fid, recode: !!q.recode,
-        folder: settings.folder, title: r.info.title || ''
+        folder: settings.folder, title: (r.customName || '').trim() || r.info.title || ''
       });
     }).catch(function (e) {
       delete rowByJob[jobId];
@@ -567,21 +579,60 @@
   }
 
   /* ----------------------------------------------------------------- التبويبات */
+  function renumber(p) { rows[p.id].forEach(function (r, i) { r.q('.num').textContent = i + 1; r.q('.rm').hidden = i < ROWS_PER_TAB; }); }
+  function saveExtra() {
+    var o = {}; PLATFORMS.forEach(function (p) { o[p.id] = rows[p.id].filter(function (r) { return r.n > ROWS_PER_TAB; }).map(function (r) { return r.n; }); });
+    lsSet('manzel.extra', o);
+  }
+  function addRow(p, n, silent) {
+    if (rows[p.id].length >= MAX_ROWS) return toast('info', 'وصلت للحد الأقصى (' + MAX_ROWS + ' مربع).');
+    if (!n) n = rows[p.id].reduce(function (m, r) { return Math.max(m, r.n); }, 0) + 1;
+    var r = makeRow(p, n); rows[p.id].push(r);
+    var panel = $('#panel-' + p.id); panel.insertBefore(r.el, $('.addrow', panel));
+    renumber(p); render(r);
+    if (!silent) { saveExtra(); r.input.focus(); }
+    return r;
+  }
+  function removeRow(r) {
+    if (r.state === 'queued' || r.state === 'downloading') return toast('error', 'أوقف التحميل أولاً ثم احذف المربع.');
+    r.token++; if (r.jobId) delete rowByJob[r.jobId];
+    var list = rows[r.p.id]; list.splice(list.indexOf(r), 1);
+    if (r.el.parentNode) r.el.parentNode.removeChild(r.el);
+    renumber(r.p); saveExtra(); persistRows(); updateBadges();
+  }
+  function clearAll(p) {
+    var list = rows[p.id];
+    if (!list.some(function (r) { return r.url || r.state !== 'empty'; })) return toast('info', 'لا يوجد شيء لمسحه.');
+    confirmDialog({ title: 'مسح كل المربعات', text: 'سيتم مسح كل الروابط في تبويب «' + p.name + '» وإيقاف أي تحميل جارٍ. الفيديوهات المحفوظة لن تُحذف.', ok: 'مسح الكل', danger: true }).then(function (ok) {
+      if (!ok) return;
+      list.forEach(function (r) {
+        if ((r.state === 'queued' || r.state === 'downloading') && r.jobId) Native.call('cancel', { id: r.jobId }).catch(function () {});
+        resetRow(r);
+      });
+      toast('success', 'تم مسح كل المربعات.', 2200);
+    });
+  }
+
   function buildUI() {
     var panels = $('#panels'), tabs = $('#tabs');
+    var extra = lsGet('manzel.extra', {});
     PLATFORMS.forEach(function (p) {
       rows[p.id] = [];
       var panel = el('section', 'panel'); panel.id = 'panel-' + p.id; panel.setAttribute('data-p', p.id);
       panel.setAttribute('role', 'tabpanel');
       var bar = el('div', 'panel-bar');
-      bar.innerHTML = '<div class="panel-title">' + p.icon + '<div>' + p.name + '<span class="panel-sub">' + ROWS_PER_TAB + ' روابط في نفس الوقت</span></div></div>' +
-        '<button type="button" class="btn primary sm all">' + I.down + '<span>تحميل الكل</span></button>';
+      bar.innerHTML = '<div class="panel-title">' + p.icon + '<div>' + p.name + '<span class="panel-sub">' + (p.sub || (ROWS_PER_TAB + ' روابط في نفس الوقت')) + '</span></div></div>' +
+        '<div class="bar-actions"><button type="button" class="icon-btn clearall" aria-label="مسح كل المربعات" title="مسح الكل">' + I.x + '</button>' +
+        '<button type="button" class="btn primary sm all">' + I.down + '<span>تحميل الكل</span></button></div>';
       $('.all', bar).addEventListener('click', function () { downloadAll(p); });
+      $('.clearall', bar).addEventListener('click', function () { clearAll(p); });
       panel.appendChild(bar);
-      for (var i = 1; i <= ROWS_PER_TAB; i++) {
-        var r = makeRow(p, i); rows[p.id].push(r); panel.appendChild(r.el);
-      }
+      var add = el('button', 'btn addrow', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>إضافة مربع</span>');
+      add.type = 'button'; add.addEventListener('click', function () { addRow(p); });
+      panel.appendChild(add);
       panels.appendChild(panel);
+      for (var i = 1; i <= ROWS_PER_TAB; i++) addRow(p, i, true);
+      (extra[p.id] || []).forEach(function (n) { if (n > ROWS_PER_TAB) addRow(p, n, true); });
 
       var tb = el('button', 'tab'); tb.type = 'button'; tb.id = 'tab-' + p.id; tb.setAttribute('role', 'tab'); tb.setAttribute('data-p', p.id);
       tb.setAttribute('aria-controls', 'panel-' + p.id);
@@ -603,7 +654,7 @@
 
   function updateBadges() {
     PLATFORMS.forEach(function (p) {
-      var n = rows[p.id].filter(function (r) { return r.state === 'queued' || r.state === 'downloading'; }).length;
+      var n = (rows[p.id] || []).filter(function (r) { return r.state === 'queued' || r.state === 'downloading'; }).length;
       var c = $('#tab-' + p.id + ' .count'); if (!c) return;
       c.hidden = n === 0; c.textContent = n;
     });
@@ -612,7 +663,7 @@
   /* ----------------------------------------------------------------- السجل */
   function addHistory(r, res) {
     history_.unshift({
-      id: uid('h'), title: (r.info && r.info.title) || res.name, thumb: (r.info && r.info.thumbnail && r.info.thumbnail.length < 1500) ? r.info.thumbnail : '',
+      id: uid('h'), title: (r.customName || '').trim() || (r.info && r.info.title) || res.name, thumb: (r.info && r.info.thumbnail && r.info.thumbnail.length < 1500) ? r.info.thumbnail : '',
       platform: r.p.id, uri: res.uri, name: res.name, mime: res.mime, size: res.size, folder: res.folder, date: Date.now(), audio: !!res.audio
     });
     history_ = history_.slice(0, HISTORY_MAX); saveHistory();
@@ -881,7 +932,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         var s = saved[r.id]; if (!s) { render(r); return; }
-        r.url = s.url || ''; r.info = s.info || null; r.qid = s.qid || settings.quality; r.story = !!s.story;
+        r.url = s.url || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = s.qid || settings.quality; r.story = !!s.story;
         r.result = s.result || null; r.err = s.err || null; r.jobId = s.jobId || null;
         var st = s.state;
         if (st === 'analyzing') st = r.info ? 'ready' : (r.url ? 'empty' : 'empty');

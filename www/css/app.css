@@ -329,3 +329,17 @@ body.has-banner .panels { padding-top: calc(var(--top-h) + var(--safe-t) + 66px)
 .tab[data-p] { --tab-color: var(--tc); }
 .sheet[data-p] .opt[aria-checked="true"] { border-color: var(--tc); }
 .pct { direction: ltr; }
+
+/* ---------- تبويب «أي رابط»، المربعات الإضافية، اسم الملف، مسح الكل ---------- */
+[data-p="web"] { --accent: #6D28D9; --tc: #6D28D9; }
+[data-theme="dark"] [data-p="web"] { --tc: #B79CFF; }
+.bar-actions { display: flex; align-items: center; gap: 8px; }
+.bar-actions .clearall { width: 48px; min-height: 48px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--err-ink, #B42318); justify-content: center; }
+.row-top-end { display: inline-flex; align-items: center; gap: 6px; }
+.row .rm { width: 44px; min-height: 44px; color: var(--err-ink, #B42318); }
+.namefield { display: none; margin-top: 10px; }
+.row[data-info="1"][data-state="ready"] .namefield, .row[data-info="1"][data-state="failed"] .namefield { display: block; }
+.namefield input { width: 100%; min-height: 48px; padding: 0 12px; font: inherit; font-size: 15px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); }
+.namefield input:focus { border-color: var(--accent); }
+.addrow { width: 100%; margin: 4px 0 12px; border-style: dashed; color: var(--tc, var(--accent)); justify-content: center; }
+.addrow svg { width: 22px; height: 22px; }
