@@ -79,7 +79,7 @@ jobs:
 
       - name: بناء APK موقّع
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon -PgithubRepo="$GITHUB_REPOSITORY"
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon -PgithubRepo="$GITHUB_REPOSITORY"
 
       - name: فحص التوقيع وتجهيز ملفات الإصدار
         run: |
