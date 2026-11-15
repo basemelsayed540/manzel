@@ -47,6 +47,7 @@
     retry: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
     cut: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><path d="m8 8 11 9M8 16 19 7"/></svg>',
     trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    globe: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg>',
     film: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9.5 5 2.5-5 2.5z"/></svg>'
   };
 
@@ -103,7 +104,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         if (!r.url && r.state === 'empty') return;
-        o[r.id] = { url: r.url, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
+        o[r.id] = { url: r.url, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
       });
     });
     lsSet('manzel.rows', o);
@@ -189,7 +190,7 @@
 
   function makeRow(p, n) {
     var r = {
-      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', state: 'empty', info: null, qid: settings.quality, story: false,
+      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', referer: '', state: 'empty', info: null, qid: settings.quality, story: false,
       jobId: null, percent: 0, speed: '', eta: -1, stage: 'queued', result: null, err: null, token: 0, autoStart: false, toastA: null, started: 0
     };
     var s = el('section', 'row');
@@ -199,6 +200,7 @@
       '<div class="field"><input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ألصق رابط الفيديو هنا" aria-label="رابط الفيديو">' +
       '<button type="button" class="icon-btn paste">' + I.clip + '<span>لصق</span></button>' +
       '<button type="button" class="icon-btn clear" aria-label="مسح">' + I.x + '</button></div>' +
+      '<div class="webtools"><button type="button" class="btn browse">' + I.globe + '<span>فتح الصفحة والتقاط الفيديو</span></button></div>' +
       '<div class="preview"><div class="thumb">' + I.film + '<img alt="" referrerpolicy="no-referrer" hidden><span class="dur" hidden></span></div>' +
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
       '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
@@ -216,6 +218,8 @@
       '<div class="errBox"><div class="errmsg"><span class="em"></span><small class="ed"></small></div>' +
       '<div class="actions"><button type="button" class="btn primary retry">' + I.retry + '<span>إعادة المحاولة</span></button>' +
       '<button type="button" class="btn engine">تحديث المحرك</button>' +
+      '<button type="button" class="btn login" hidden>تسجيل الدخول</button>' +
+      '<button type="button" class="btn browse2" hidden>' + I.globe + '<span>جرّب المتصفح</span></button>' +
       '<button type="button" class="btn ghost clear2">مسح</button></div></div>';
     r.el = s;
     r.q = function (sel) { return $(sel, s); };
@@ -254,6 +258,9 @@
     r.q('.cancel').addEventListener('click', function () { cancelRow(r); });
     r.q('.retry').addEventListener('click', function () { startRow(r, true); });
     r.q('.engine').addEventListener('click', function () { doUpdateEngine(false); });
+    r.q('.browse').addEventListener('click', function () { openBrowser(r); });
+    r.q('.browse2').addEventListener('click', function () { openBrowser(r); });
+    r.q('.login').addEventListener('click', function () { var st = siteOfUrl(r.url); if (st) doLogin(st, r); });
     r.q('.open').addEventListener('click', function () { openResult(r.result); });
     r.q('.share').addEventListener('click', function () { shareResult(r.result); });
     r.q('.story').addEventListener('click', function () { storyFromResult(r); });
@@ -305,11 +312,18 @@
     // أزرار الحالات
     r.q('.story').hidden = !(r.result && !r.result.audio && !r.result.storyDone);
     if (st === 'failed' && r.err) {
-      r.q('.em').textContent = r.err.message || 'تعذّر إتمام العملية.';
+      var site = siteOfUrl(r.url), code = r.err.code;
+      var loginCase = code === 'private' && !!site;
+      r.q('.em').textContent = loginCase
+        ? 'هذا الفيديو يتطلب تسجيل دخول. يمكنك تسجيل الدخول بحسابك (اختياري) ثم تُعاد المحاولة تلقائياً.'
+        : (r.err.message || 'تعذّر إتمام العملية.');
       var det = r.err.detail ? String(r.err.detail).slice(-160) : '';
       r.q('.ed').textContent = det; r.q('.ed').hidden = !det;
-      r.q('.retry').hidden = !!NO_RETRY[r.err.code];
-      r.q('.engine').hidden = !NEEDS_ENGINE[r.err.code];
+      r.q('.retry').hidden = !!NO_RETRY[code] && !loginCase;
+      r.q('.engine').hidden = !NEEDS_ENGINE[code];
+      r.q('.login').hidden = !loginCase;
+      r.q('.login').textContent = loginCase && acct[site] ? 'إعادة تسجيل الدخول' : 'تسجيل الدخول';
+      r.q('.browse2').hidden = !(r.p.id === 'web' && (code === 'unsupported' || code === 'extractor' || code === 'unknown' || code === 'unavailable'));
     }
     if (st === 'done' && r.result) {
       var res = r.result;
@@ -343,7 +357,7 @@
     r.token++;
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     if (r.jobId) { delete rowByJob[r.jobId]; }
-    r.url = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
+    r.url = ''; r.referer = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
     r.autoStart = false; r.qid = settings.quality;
     setState(r, 'empty');
   }
@@ -352,7 +366,7 @@
   function onUrlChanged(r, raw, immediate) {
     var url = extractUrl(raw) || String(raw || '').trim();
     if (url === r.url && (r.info || r.state === 'analyzing')) { render(r); return; }
-    r.token++; r.info = null; r.result = null; r.err = null; r.customName = '';
+    r.token++; r.info = null; r.result = null; r.err = null; r.customName = ''; r.referer = '';
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     r.url = url;
     if (!url) { r.autoStart = false; setState(r, 'empty'); return; }
@@ -376,7 +390,7 @@
     setState(r, 'analyzing');
     if (r.toastA) r.toastA.dismiss();
     r.toastA = toast('info', 'جاري تحليل الرابط (' + r.p.name + ' — صف ' + r.n + ')…', 0);
-    Native.call('analyze', { url: url }).then(function (info) {
+    Native.call('analyze', { url: url, referer: r.referer || '' }).then(function (info) {
       if (tok !== r.token) return;
       if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
       r.info = info;
@@ -417,7 +431,7 @@
       if (p && p.granted === false) throw Object.assign(new Error('بدون صلاحية التخزين لا يمكن حفظ الفيديو. اسمح بها من إعدادات الهاتف ثم أعد المحاولة.'), { code: 'permission' });
       return Native.call('download', {
         id: jobId, url: r.url, quality: q.id, formatId: q.fid, recode: !!q.recode,
-        folder: settings.folder, title: (r.customName || '').trim() || r.info.title || ''
+        folder: settings.folder, title: (r.customName || '').trim() || r.info.title || '', referer: r.referer || ''
       });
     }).catch(function (e) {
       delete rowByJob[jobId];
@@ -512,6 +526,42 @@
         }
       });
     }, function () {});
+  }
+
+  /* المتصفح الملتقِط + الحسابات الاختيارية */
+  var acct = { instagram: false, facebook: false };
+  var SITE_NAMES = { instagram: 'إنستجرام', facebook: 'فيسبوك' };
+  function siteOfUrl(u) {
+    try {
+      var h = new URL(u).hostname.toLowerCase();
+      if (/(^|\.)(instagram\.com|instagr\.am)$/.test(h)) return 'instagram';
+      if (/(^|\.)(facebook\.com|fb\.watch|fb\.com|fb\.me)$/.test(h)) return 'facebook';
+    } catch (e) { /* ليس رابطاً */ }
+    return null;
+  }
+  function refreshAccounts() {
+    return Native.call('loginStatus').then(function (s) { acct = s || acct; return acct; }, function () { return acct; });
+  }
+  function doLogin(site, r) {
+    Native.call('openLogin', { site: site }).then(function (res) {
+      refreshAccounts();
+      if (res && res.saved) {
+        toast('success', 'تم حفظ تسجيل الدخول إلى ' + SITE_NAMES[site] + '.');
+        if (r) startRow(r, false);
+      }
+    }, function (e) { toast('error', e.message || 'تعذّر فتح شاشة تسجيل الدخول.'); });
+  }
+  function openBrowser(r) {
+    var url = extractUrl(r.input.value) || r.url;
+    if (!url) return toast('error', 'ألصق رابط الصفحة أولاً ثم افتحها بالمتصفح.');
+    Native.call('sniff', { url: url }).then(function (res) {
+      r.token++;
+      r.referer = res.pageUrl || url; r.url = res.mediaUrl; r.info = null; r.result = null; r.err = null;
+      var t = String(res.title || '').trim();
+      if (t && !r.customName) r.customName = t.slice(0, 80);
+      toast('success', 'تم اختيار الفيديو. جاري تحليله…', 2200);
+      analyzeRow(r);
+    }, function (e) { if (e.code !== 'cancelled') toast('error', e.message || 'تعذّر فتح المتصفح.'); });
   }
 
   /* نتائج الملفات */
@@ -744,6 +794,20 @@
       n3.textContent = 'المنصات تغيّر نفسها كثيراً. التطبيق يحدّث المحرك تلقائياً مرة كل يوم عند الفتح، ويمكنك التحديث يدوياً هنا.';
       g3.appendChild(n3);
 
+      var g7 = group('حسابات (اختياري)');
+      var n7 = el('div', 'sub'); n7.style.whiteSpace = 'normal'; n7.style.marginBottom = '8px';
+      n7.textContent = 'بعض الفيديوهات تظهر لك فقط وأنت مسجّل دخول. سجّل بحسابك (يُفضّل حساب ثانوي) وتبقى الجلسة على هاتفك فقط. قد يحدّ الموقع من الحساب عند التحميل المتكرر.';
+      g7.appendChild(n7);
+      Object.keys(SITE_NAMES).forEach(function (sid) {
+        var rw = el('div', 'acct'); var nm = el('span'); nm.textContent = SITE_NAMES[sid] + (acct[sid] ? ' — مسجّل ✓' : ' — غير مسجّل');
+        var bt = el('button', 'btn' + (acct[sid] ? ' danger' : ' primary')); bt.type = 'button'; bt.textContent = acct[sid] ? 'خروج' : 'تسجيل الدخول';
+        bt.addEventListener('click', function () {
+          if (acct[sid]) Native.call('logout', { site: sid }).then(function () { return refreshAccounts(); }).then(draw, function (e) { toast('error', e.message); });
+          else Native.call('openLogin', { site: sid }).then(function (res) { return refreshAccounts().then(function () { if (res && res.saved) toast('success', 'تم حفظ تسجيل الدخول.'); draw(); }); }, function (e) { toast('error', e.message); });
+        });
+        rw.appendChild(nm); rw.appendChild(bt); g7.appendChild(rw);
+      });
+
       var g4 = group('السجل');
       var b4 = el('button', 'btn danger', I.trash + '<span>حذف السجل</span>'); b4.type = 'button'; b4.style.width = '100%';
       b4.addEventListener('click', function () {
@@ -919,8 +983,8 @@
     return confirmDialog({
       title: 'قبل البدء',
       text: 'منزّل للاستخدام الشخصي فقط: لتحميل محتوى عام، أو محتوى تملكه، أو لديك إذن بتحميله. ' +
-            'احترم حقوق أصحاب المحتوى وشروط كل منصة. التطبيق لا يدعم تسجيل الدخول ولا الفيديوهات الخاصة ولا المحتوى المحمي بـ DRM، ' +
-            'وستظهر لك رسالة واضحة بدل المحاولة إن كان الرابط كذلك.',
+            'احترم حقوق أصحاب المحتوى وشروط كل منصة. التطبيق لا يتجاوز أي حماية ولا يدعم المحتوى المحمي بـ DRM. ' +
+            'تسجيل الدخول اختياري (من الإعدادات) ويستخدم حسابك أنت فقط ويبقى على هاتفك.',
       buttons: [{ label: first ? 'فهمت وأوافق' : 'حسناً', value: true, cls: 'primary' }],
       locked: first
     }).then(function () { if (first) lsSet('manzel.ack', 1); });
@@ -932,7 +996,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         var s = saved[r.id]; if (!s) { render(r); return; }
-        r.url = s.url || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = s.qid || settings.quality; r.story = !!s.story;
+        r.url = s.url || ''; r.referer = s.referer || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = s.qid || settings.quality; r.story = !!s.story;
         r.result = s.result || null; r.err = s.err || null; r.jobId = s.jobId || null;
         var st = s.state;
         if (st === 'analyzing') st = r.info ? 'ready' : (r.url ? 'empty' : 'empty');
@@ -961,7 +1025,7 @@
     $('#btnSettings').addEventListener('click', openSettings);
     $('#btnUpdate').addEventListener('click', runUpdate);
     $('#abBtn').addEventListener('click', function () { installApk(); });
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) resync(); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { resync(); refreshAccounts(); } });
 
     verifyAfterReload();
 
@@ -970,7 +1034,7 @@
         if (p && p.granted === false) toast('error', 'صلاحية التخزين مطلوبة لحفظ الفيديوهات على أندرويد 9 وأقل.', 7000);
       }, function () {});
       Native.call('appInfo').then(function (i) { appInfo = i; }, function () {});
-      resync();
+      resync(); refreshAccounts();
       Native.call('checkAppUpdate').then(function (u) { if (u && u.available) showAppBanner(u); }, function () {});
       setTimeout(autoUpdateEngine, 4000);
     };

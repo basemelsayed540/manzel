@@ -8,11 +8,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
@@ -73,9 +75,10 @@ class ManzelPlugin : Plugin() {
     @PluginMethod
     fun analyze(call: PluginCall) {
         val url = call.getString("url") ?: return call.reject("الرابط مفقود", "bad_request")
+        val referer = call.getString("referer") ?: ""
         Engine.analyzePool.execute {
             try {
-                call.resolve(JSObject(Engine.analyze(context, url).toString()))
+                call.resolve(JSObject(Engine.analyze(context, url, referer).toString()))
             } catch (e: ManzelError) {
                 call.reject(e.message, e.code)
             } catch (e: Exception) {
@@ -94,7 +97,8 @@ class ManzelPlugin : Plugin() {
         val recode = call.getBoolean("recode", false) ?: false
         val folder = call.getString("folder") ?: "movies"
         val title = call.getString("title") ?: ""
-        Engine.submit(context, Job(id, url, formatId, recode, folder, qualityId, title))
+        val referer = call.getString("referer") ?: ""
+        Engine.submit(context, Job(id, url, formatId, recode, folder, qualityId, title, referer))
         call.resolve(JSObject().put("queued", true))
     }
 
@@ -295,6 +299,60 @@ class ManzelPlugin : Plugin() {
             } catch (e: Exception) {
                 call.reject("تعذّر تحميل التحديث. تأكد من الاتصال بالإنترنت.", "network")
             }
+        }
+    }
+
+    // ------------------------------------------------------------ متصفح التقاط الفيديو + حسابات اختيارية
+
+    @PluginMethod
+    fun sniff(call: PluginCall) {
+        val url = call.getString("url") ?: return call.reject("الرابط مفقود", "bad_request")
+        val intent = Intent(context, BrowserActivity::class.java).putExtra("url", url)
+        startActivityForResult(call, intent, "sniffResult")
+    }
+
+    @ActivityCallback
+    fun sniffResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val d = result.data
+        val media = d?.getStringExtra("mediaUrl")
+        if (result.resultCode == android.app.Activity.RESULT_OK && !media.isNullOrEmpty()) {
+            call.resolve(
+                JSObject()
+                    .put("mediaUrl", media)
+                    .put("pageUrl", d?.getStringExtra("pageUrl") ?: "")
+                    .put("title", d?.getStringExtra("title") ?: "")
+            )
+        } else call.reject("تم إغلاق المتصفح بدون اختيار فيديو.", "cancelled")
+    }
+
+    @PluginMethod
+    fun openLogin(call: PluginCall) {
+        val site = call.getString("site") ?: return call.reject("الموقع مفقود", "bad_request")
+        if (Session.site(site) == null) return call.reject("موقع غير مدعوم", "bad_request")
+        val intent = Intent(context, LoginActivity::class.java).putExtra("site", site)
+        startActivityForResult(call, intent, "loginResult")
+    }
+
+    @ActivityCallback
+    fun loginResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        call.resolve(JSObject().put("saved", result.resultCode == android.app.Activity.RESULT_OK))
+    }
+
+    @PluginMethod
+    fun loginStatus(call: PluginCall) {
+        val o = JSObject()
+        Session.sites.forEach { o.put(it.id, Session.isLoggedIn(context, it.id)) }
+        call.resolve(o)
+    }
+
+    @PluginMethod
+    fun logout(call: PluginCall) {
+        val site = call.getString("site") ?: return call.reject("الموقع مفقود", "bad_request")
+        activity.runOnUiThread {
+            Session.logout(context, site)
+            call.resolve()
         }
     }
 }

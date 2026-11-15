@@ -29,7 +29,8 @@ class Job(
     val recode: Boolean,
     val folder: String,
     val qualityId: String,
-    val title: String
+    val title: String,
+    val referer: String = ""
 ) {
     @Volatile var percent = 0.0
     @Volatile var stage = "queued"
@@ -115,7 +116,7 @@ object Engine {
     private fun codec(raw: String): String =
         if (raw.isEmpty() || raw == "null") "" else raw.lowercase()
 
-    fun analyze(ctx: Context, url: String): JSONObject {
+    fun analyze(ctx: Context, url: String, referer: String = ""): JSONObject {
         ensureInit(ctx)
         val req = YoutubeDLRequest(url)
         req.addOption("--dump-single-json")
@@ -123,10 +124,14 @@ object Engine {
         req.addOption("--playlist-items", "1")
         req.addOption("--no-warnings")
         req.addOption("--socket-timeout", "20")
+        if (referer.isNotEmpty()) req.addOption("--referer", referer)
+        val ck = Session.applyTo(ctx, req, url)
         val out: String = try {
             YoutubeDL.getInstance().execute(req, null, null).out ?: ""
         } catch (e: Exception) {
             throw classify(e.message ?: e.toString())
+        } finally {
+            ck?.delete()
         }
         val s = out.trim()
         val a = s.indexOf('{')
@@ -262,6 +267,7 @@ object Engine {
 
     private fun runJob(ctx: Context, job: Job) {
         val tmp = File(ctx.cacheDir, "dl/${job.id}")
+        var ck: File? = null
         try {
             if (job.cancelled) throw ManzelError("cancelled", "تم الإلغاء")
             ensureInit(ctx)
@@ -279,6 +285,8 @@ object Engine {
             req.addOption("--fragment-retries", "5")
             req.addOption("--socket-timeout", "20")
             req.addOption("--concurrent-fragments", "4")
+            if (job.referer.isNotEmpty()) req.addOption("--referer", job.referer)
+            ck = Session.applyTo(ctx, req, job.url)
             val audio = job.qualityId == "audio"
             if (audio) {
                 req.addOption("-f", "ba/b")
@@ -325,6 +333,7 @@ object Engine {
             if (job.cancelled) failJob(ctx, job, ManzelError("cancelled", "تم الإلغاء"))
             else failJob(ctx, job, classify(e.message ?: e.toString()))
         } finally {
+            ck?.delete()
             tmp.deleteRecursively()
             jobs.remove(job.id)
             onEnd(ctx)
@@ -442,7 +451,7 @@ object Engine {
                 e("bot", "يوتيوب طلب التحقق قبل التحميل. جرّب لاحقاً أو اضغط «تحديث المحرك» من الإعدادات.")
             has("confirm your age", "age-restricted", "age restricted", "inappropriate for some users") ->
                 e("age", "المحتوى مقيّد بالعمر ويحتاج تسجيل دخول، والتطبيق يحمّل الروابط العامة فقط.")
-            has("private video", "this video is private", "login required", "log in", "sign in", "requires authentication",
+            has("private video", "this video is private", "empty media response", "not granting access", "login required", "log in", "sign in", "requires authentication",
                 "need to log in", "not logged in", "cookies", "checkpoint", "restricted video", "members-only", "members only") ->
                 e("private", "الفيديو خاص أو يحتاج تسجيل دخول. التطبيق يحمّل الروابط العامة فقط.")
             has("not available in your country", "geo restricted", "geo-restricted", "blocked it in your country") ->

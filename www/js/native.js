@@ -24,6 +24,10 @@
         return P[method](args || {}).catch(function (e) {
           var err = new Error((e && e.message) || 'خطأ غير معروف');
           err.code = (e && e.code) || 'unknown';
+          if (err.code === 'UNIMPLEMENTED' || /not implemented/i.test(err.message)) {
+            err.code = 'unimplemented';
+            err.message = 'هذه الميزة تحتاج تحديث التطبيق نفسه. اضغط زر التحديث ⟳ في الأعلى ثم ثبّت التحديث.';
+          }
           throw err;
         });
       }
@@ -40,10 +44,19 @@
       '<svg xmlns="http://www.w3.org/2000/svg" width="184" height="128"><rect width="184" height="128" fill="' + c + '"/>' +
       '<path d="M78 44l36 20-36 20z" fill="#fff" opacity=".85"/></svg>');
   }
+  var mockLogin = { instagram: false, facebook: false };
   var mock = {
+    loginStatus: function () { return Promise.resolve({ instagram: mockLogin.instagram, facebook: mockLogin.facebook }); },
+    openLogin: function (a) { return wait(600).then(function () { mockLogin[a.site] = true; return { saved: true }; }); },
+    logout: function (a) { mockLogin[a.site] = false; return Promise.resolve({}); },
+    sniff: function (a) {
+      return wait(500).then(function () { return { mediaUrl: 'https://cdn.example.com/video/stream.m3u8', pageUrl: a.url, title: 'فيديو من الصفحة' }; });
+    },
     analyze: function (a) {
       var u = (a.url || '').toLowerCase();
       return wait(900).then(function () {
+        if (u.indexOf('needlogin') >= 0 && !mockLogin.instagram) throw fail('private', 'الفيديو خاص أو يحتاج تسجيل دخول.');
+        if (u.indexOf('unsupportedpage') >= 0) throw fail('unsupported', 'الرابط غير مدعوم أو غير صحيح.');
         if (u.indexOf('private') >= 0) throw fail('private', 'الفيديو خاص أو يحتاج تسجيل دخول. التطبيق يحمّل الروابط العامة فقط.');
         if (u.indexOf('drm') >= 0) throw fail('drm', 'هذا المحتوى محمي بـ DRM ولا يمكن تحميله.');
         if (u.indexOf('bad') >= 0) throw fail('unsupported', 'الرابط غير مدعوم أو غير صحيح. تأكد أنه رابط فيديو عام.');

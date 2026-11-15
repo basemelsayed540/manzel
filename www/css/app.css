@@ -343,3 +343,10 @@ body.has-banner .panels { padding-top: calc(var(--top-h) + var(--safe-t) + 66px)
 .namefield input:focus { border-color: var(--accent); }
 .addrow { width: 100%; margin: 4px 0 12px; border-style: dashed; color: var(--tc, var(--accent)); justify-content: center; }
 .addrow svg { width: 22px; height: 22px; }
+
+.webtools { display: none; margin-top: 10px; }
+.row[data-p="web"][data-state="empty"] .webtools, .row[data-p="web"][data-state="ready"] .webtools, .row[data-p="web"][data-state="failed"] .webtools { display: block; }
+.webtools .btn { width: 100%; color: var(--tc, var(--accent)); border-style: dashed; }
+.webtools svg { width: 22px; height: 22px; }
+.acct { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.acct .btn { min-width: 130px; }
