@@ -379,3 +379,8 @@ body.has-banner .panels { padding-top: calc(var(--top-h) + var(--safe-t) + 66px)
 .row[data-mode="cut"] .controls .dl { flex: 1; }
 .cutfield .precise { margin-top: 10px; width: 100%; }
 .bar-actions .all { white-space: nowrap; padding-inline: 12px; }
+
+/* قص و MP3: مربع واحد فقط */
+.panel[data-p="cut"] .addrow, .panel[data-p="mp3"] .addrow,
+.panel[data-p="cut"] .all, .panel[data-p="mp3"] .all,
+.row[data-mode="cut"] .num, .row[data-mode="mp3"] .num { display: none !important; }

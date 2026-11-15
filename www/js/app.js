@@ -494,7 +494,7 @@
     setState(r, 'ready');
   }
   function pickFiles(r) {
-    Native.call('pickVideos', { multiple: true }).then(function (res) {
+    Native.call('pickVideos', { multiple: false }).then(function (res) {
       var files = (res && res.files) || [];
       if (!files.length) return;
       var list = rows[r.p.id], i = list.indexOf(r);
@@ -777,8 +777,9 @@
       add.type = 'button'; add.addEventListener('click', function () { addRow(p); });
       panel.appendChild(add);
       panels.appendChild(panel);
-      for (var i = 1; i <= ROWS_PER_TAB; i++) addRow(p, i, true);
-      (extra[p.id] || []).forEach(function (n) { if (n > ROWS_PER_TAB) addRow(p, n, true); });
+      var count = p.mode === 'dl' ? ROWS_PER_TAB : 1;
+      for (var i = 1; i <= count; i++) addRow(p, i, true);
+      if (p.mode === 'dl') (extra[p.id] || []).forEach(function (n) { if (n > ROWS_PER_TAB) addRow(p, n, true); });
 
       var tb = el('button', 'tab'); tb.type = 'button'; tb.id = 'tab-' + p.id; tb.setAttribute('role', 'tab'); tb.setAttribute('data-p', p.id);
       tb.setAttribute('aria-controls', 'panel-' + p.id);
