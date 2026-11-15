@@ -155,6 +155,7 @@
         return { unchanged: false, uri: 'content://mock/story', name: (a.name || 'video').replace(/\.\w+$/, '') + ' (ستوري).mp4', size: 9e6, mime: 'video/mp4', folder: 'Movies/Manzel' };
       });
     },
+    openTrimmer: function (a) { return wait(300).then(function () { return { start: a.start > 0 ? a.start : 10, end: a.end > 0 ? a.end : 40 }; }); },
     clearWebCache: function () { return Promise.resolve({}); },
     checkAppUpdate: function () {
       var want = /[?&]mockupdate=1/.test(location.search);

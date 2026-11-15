@@ -33,6 +33,13 @@
             android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
+            android:name=".TrimActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:hardwareAccelerated="true"
+            android:theme="@style/AppTheme.NoActionBar" />
+
+        <activity
             android:name=".LoginActivity"
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize"

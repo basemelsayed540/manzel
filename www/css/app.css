@@ -384,3 +384,8 @@ body.has-banner .panels { padding-top: calc(var(--top-h) + var(--safe-t) + 66px)
 .panel[data-p="cut"] .addrow, .panel[data-p="mp3"] .addrow,
 .panel[data-p="cut"] .all, .panel[data-p="mp3"] .all,
 .row[data-mode="cut"] .num, .row[data-mode="mp3"] .num { display: none !important; }
+
+.cutrow { display: none; }
+.trimedit { width: 100%; min-height: 52px; background: var(--accent); color: #fff; border-color: transparent; }
+.trimedit svg { width: 22px; height: 22px; }
+.row[data-mode="cut"] .preview { cursor: pointer; }

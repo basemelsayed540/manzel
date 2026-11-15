@@ -203,7 +203,7 @@
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
       '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
       '<div class="cutfield"><div class="cutrow"><label>من<input type="text" class="cs" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="بداية القص"></label>' +
-      '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><div class="cutinfo"></div>' +
+      '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><button type="button" class="btn trimedit">' + I.film + '<span>فتح محرر القص ومعاينة الفيديو</span></button><div class="cutinfo"></div>' +
       '<button type="button" class="opt precise" role="switch" aria-checked="false"><span>قص دقيق (أبطأ)<small>يعيد ترميز الفيديو لبداية ونهاية أدق. بدونه يكون القص أسرع وتقريبياً.</small></span></button></div>' +
       '<div class="controls"><button type="button" class="btn quality" aria-haspopup="dialog"><span class="ql"></span>' + I.chev + '</button>' +
       '<button type="button" class="btn primary dl">' + I.down + '<span>تحميل</span></button></div>' +
@@ -253,6 +253,8 @@
     r.nameInput.addEventListener('input', function () { r.customName = r.nameInput.value; persistRows(); });
     r.q('.rm').addEventListener('click', function () { removeRow(r); });
     r.q('.pick').addEventListener('click', function () { pickFiles(r); });
+    r.q('.trimedit').addEventListener('click', function () { openTrim(r); });
+    r.q('.preview').addEventListener('click', function () { if (r.p.mode === 'cut' && r.info && r.info.local) openTrim(r); });
     r.q('.clear3').addEventListener('click', function () { resetRow(r); });
     r.q('.precise').addEventListener('click', function () { r.precise = !r.precise; r.q('.precise').setAttribute('aria-checked', String(r.precise)); persistRows(); });
     r.csInput.addEventListener('input', function () { r.cutStart = r.csInput.value; updateCutInfo(r); persistRows(); });
@@ -492,6 +494,18 @@
     r.info = { title: stripExt(f.name) || 'فيديو', thumbnail: f.thumb || '', duration: f.duration || 0, uploader: fmtSize(f.size), qualities: [], local: true };
     r.qid = r.p.mode === 'mp3' ? 'audio' : 'best';
     setState(r, 'ready');
+    if (r.p.mode === 'cut') setTimeout(function () { openTrim(r); }, 250);
+  }
+  function openTrim(r) {
+    if (!r.url || !r.info) return;
+    var a = parseTime(r.cutStart), b = parseTime(r.cutEnd);
+    Native.call('openTrimmer', { uri: r.url, start: isNaN(a) || a == null ? -1 : a, end: isNaN(b) || b == null ? -1 : b }).then(function (res) {
+      r.cutStart = String(Math.round(res.start * 10) / 10); r.cutEnd = String(Math.round(res.end * 10) / 10);
+      setState(r, r.state); updateCutInfo(r); persistRows();
+    }, function (e) {
+      if (e.code === 'cancelled') return;
+      toast('error', e.code === 'unimplemented' ? e.message : (e.message || 'تعذّر فتح المحرر.'));
+    });
   }
   function pickFiles(r) {
     Native.call('pickVideos', { multiple: false }).then(function (res) {
@@ -516,8 +530,7 @@
     var cut = null, mode = r.p.mode === 'mp3' ? 'mp3' : 'cut';
     if (mode === 'cut') {
       cut = cutRange(r);
-      if (cut.error) return toast('error', cut.error);
-      if (cut.whole) return toast('error', 'حدّد بداية أو نهاية للقص أولاً.');
+      if (cut.error || cut.whole) { openTrim(r); return; }
     }
     var jobId = uid(r.id);
     r.jobId = jobId; rowByJob[jobId] = r;

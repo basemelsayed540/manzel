@@ -346,6 +346,29 @@ class ManzelPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun openTrimmer(call: PluginCall) {
+        val uri = call.getString("uri") ?: return call.reject("الملف مفقود", "bad_request")
+        val intent = Intent(context, TrimActivity::class.java)
+            .putExtra("uri", uri)
+            .putExtra("start", call.getDouble("start") ?: -1.0)
+            .putExtra("end", call.getDouble("end") ?: -1.0)
+        startActivityForResult(call, intent, "trimResult")
+    }
+
+    @ActivityCallback
+    fun trimResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val d = result.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && d != null) {
+            call.resolve(
+                JSObject()
+                    .put("start", d.getDoubleExtra("start", 0.0))
+                    .put("end", d.getDoubleExtra("end", 0.0))
+            )
+        } else call.reject("تم إلغاء القص.", "cancelled")
+    }
+
+    @PluginMethod
     fun localProcess(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id مفقود", "bad_request")
         val uri = call.getString("uri") ?: return call.reject("الملف مفقود", "bad_request")
