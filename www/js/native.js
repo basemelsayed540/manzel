@@ -49,6 +49,31 @@
     loginStatus: function () { return Promise.resolve({ instagram: mockLogin.instagram, facebook: mockLogin.facebook }); },
     openLogin: function (a) { return wait(600).then(function () { mockLogin[a.site] = true; return { saved: true }; }); },
     logout: function (a) { mockLogin[a.site] = false; return Promise.resolve({}); },
+    pickVideos: function () {
+      return wait(400).then(function () {
+        return { files: [
+          { uri: 'content://mock/v1', name: 'رحلة العيد.mp4', size: 48e6, duration: 95, thumb: thumb('#0F766E') },
+          { uri: 'content://mock/v2', name: 'VID_20261101.mp4', size: 12e6, duration: 22, thumb: thumb('#9333EA') }
+        ] };
+      });
+    },
+    localProcess: function (a) {
+      var id = a.id, pct = 0, audio = a.mode === 'mp3';
+      setTimeout(function () { fire('started', { id: id }); }, 50);
+      timers[id] = setInterval(function () {
+        pct += 12 + Math.random() * 10;
+        if (pct >= 100) {
+          clearInterval(timers[id]); delete timers[id];
+          setTimeout(function () {
+            fire('done', { id: id, uri: 'content://mock/out-' + id, name: (a.title || 'out') + (audio ? '.mp3' : '.mp4'), size: audio ? 3e6 : 9e6,
+              mime: audio ? 'audio/mpeg' : 'video/mp4', folder: audio ? 'Music/Manzel' : 'Movies/Manzel', friendly: true });
+          }, 200);
+          return;
+        }
+        fire('progress', { id: id, percent: pct, speed: '8.5x', eta: -1, stage: 'processing' });
+      }, 300);
+      return wait(20).then(function () { return { queued: true }; });
+    },
     sniff: function (a) {
       return wait(500).then(function () { return { mediaUrl: 'https://cdn.example.com/video/stream.m3u8', pageUrl: a.url, title: 'فيديو من الصفحة' }; });
     },

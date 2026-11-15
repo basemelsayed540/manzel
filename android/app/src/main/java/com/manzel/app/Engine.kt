@@ -32,7 +32,10 @@ class Job(
     val title: String,
     val referer: String = "",
     val startSec: Double = -1.0,
-    val endSec: Double = -1.0
+    val endSec: Double = -1.0,
+    val localUri: String = "",
+    val mode: String = "",
+    val precise: Boolean = false
 ) {
     @Volatile var percent = 0.0
     @Volatile var stage = "queued"
@@ -264,6 +267,7 @@ object Engine {
     fun cancel(id: String) {
         val j = jobs[id] ?: return
         j.cancelled = true
+        Local.cancel(id)
         try { YoutubeDL.getInstance().destroyProcessById(id) } catch (ignored: Exception) {}
     }
 
@@ -272,6 +276,10 @@ object Engine {
         var ck: File? = null
         try {
             if (job.cancelled) throw ManzelError("cancelled", "تم الإلغاء")
+            if (job.localUri.isNotEmpty()) {
+                Local.run(ctx, job)
+                return
+            }
             ensureInit(ctx)
             job.stage = "downloading"
             emit("started", JSObject().put("id", job.id))
@@ -383,7 +391,7 @@ object Engine {
         }
     }
 
-    private fun emitProgress(job: Job) {
+    internal fun emitProgress(job: Job) {
         emit(
             "progress",
             JSObject().put("id", job.id).put("percent", job.percent).put("speed", job.speed)
@@ -413,7 +421,7 @@ object Engine {
     }
 
     /** done/failed: لو الواجهة غير متصلة نحتفظ بالنتيجة حتى تفتح وتسأل getActive. */
-    private fun record(event: String, data: JSObject) {
+    internal fun record(event: String, data: JSObject) {
         if (sink == null) {
             finished.add(JSObject().put("event", event).put("data", data))
         }

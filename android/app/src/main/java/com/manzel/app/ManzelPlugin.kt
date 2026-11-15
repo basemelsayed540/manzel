@@ -304,6 +304,67 @@ class ManzelPlugin : Plugin() {
         }
     }
 
+    // ------------------------------------------------------------ فيديوهات الهاتف: اختيار + قص + MP3
+
+    @PluginMethod
+    fun pickVideos(call: PluginCall) {
+        val multiple = call.getBoolean("multiple", true) ?: true
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "video/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(call, intent, "pickResult")
+    }
+
+    @ActivityCallback
+    fun pickResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val d = result.data
+        if (result.resultCode != android.app.Activity.RESULT_OK || d == null) {
+            return call.reject("لم يتم اختيار ملف.", "cancelled")
+        }
+        val uris = ArrayList<Uri>()
+        val clip = d.clipData
+        if (clip != null) for (i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri)
+        else d.data?.let { uris.add(it) }
+        Engine.analyzePool.execute {
+            try {
+                val arr = JSONArray()
+                for (u in uris) {
+                    try {
+                        context.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (e: Exception) { /* الصلاحية المؤقتة تكفي */ }
+                    arr.put(Local.describe(context, u))
+                }
+                call.resolve(JSObject().put("files", arr))
+            } catch (e: Exception) {
+                call.reject("تعذّر قراءة الملفات المختارة.", "unknown")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun localProcess(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id مفقود", "bad_request")
+        val uri = call.getString("uri") ?: return call.reject("الملف مفقود", "bad_request")
+        val mode = call.getString("mode") ?: "cut"
+        val folder = call.getString("folder") ?: "movies"
+        val title = call.getString("title") ?: ""
+        val start = call.getDouble("start") ?: -1.0
+        val end = call.getDouble("end") ?: -1.0
+        val precise = call.getBoolean("precise", false) ?: false
+        Engine.submit(
+            context,
+            Job(
+                id = id, url = "", formatId = "", recode = false, folder = folder, qualityId = mode, title = title,
+                startSec = start, endSec = end, localUri = uri, mode = mode, precise = precise
+            )
+        )
+        call.resolve(JSObject().put("queued", true))
+    }
+
     // ------------------------------------------------------------ متصفح التقاط الفيديو + حسابات اختيارية
 
     @PluginMethod

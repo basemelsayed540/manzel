@@ -366,3 +366,16 @@ body.has-banner .panels { padding-top: calc(var(--top-h) + var(--safe-t) + 66px)
 .row[data-mode="mp3"] .quality { display: none; }
 .row[data-mode="mp3"] .controls .dl { flex: 1; }
 .row[data-indet="1"] .bar i { width: 30% !important; animation: slide 1.2s ease-in-out infinite; }
+
+/* ---------- تبويبا قص و MP3 على فيديوهات الهاتف ---------- */
+.pickbar { display: none; gap: 8px; margin-top: 4px; }
+.row[data-mode="cut"] .pickbar, .row[data-mode="mp3"] .pickbar { display: flex; }
+.pickbar .pick { flex: 1; color: var(--tc, var(--accent)); border-style: dashed; justify-content: center; }
+.pickbar .pick svg { width: 22px; height: 22px; }
+.pickbar .clear3 { width: 48px; min-height: 48px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); justify-content: center; }
+.row[data-mode="cut"] .field, .row[data-mode="mp3"] .field,
+.row[data-mode="cut"] .webtools, .row[data-mode="mp3"] .webtools { display: none !important; }
+.row[data-mode="cut"] .quality { display: none; }
+.row[data-mode="cut"] .controls .dl { flex: 1; }
+.cutfield .precise { margin-top: 10px; width: 100%; }
+.bar-actions .all { white-space: nowrap; padding-inline: 12px; }

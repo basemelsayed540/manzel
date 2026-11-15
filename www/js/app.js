@@ -55,9 +55,9 @@
   var PLATFORMS = [
     { id: 'web', name: 'تحميل', mode: 'dl', hosts: null, sub: 'من أي رابط في الإنترنت',
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>' },
-    { id: 'cut', name: 'قص', mode: 'cut', hosts: null, sub: 'حمّل جزءاً فقط من الفيديو',
+    { id: 'cut', name: 'قص', mode: 'cut', hosts: null, sub: 'اقتطع جزءاً من فيديو على هاتفك',
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><path d="m8 8 11 9M8 16 19 7"/></svg>' },
-    { id: 'mp3', name: 'MP3', mode: 'mp3', hosts: null, sub: 'حوّل أي فيديو إلى صوت',
+    { id: 'mp3', name: 'MP3', mode: 'mp3', hosts: null, sub: 'حوّل فيديو من هاتفك إلى MP3',
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' }
   ];
   var PBYID = {}; PLATFORMS.forEach(function (p) { PBYID[p.id] = p; });
@@ -100,7 +100,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         if (!r.url && r.state === 'empty') return;
-        o[r.id] = { url: r.url, cutStart: r.cutStart, cutEnd: r.cutEnd, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
+        o[r.id] = { url: r.url, precise: r.precise, cutStart: r.cutStart, cutEnd: r.cutEnd, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
       });
     });
     lsSet('manzel.rows', o);
@@ -181,18 +181,20 @@
   var STATE_LABEL = { empty: 'فاضي', analyzing: 'جاري التحليل', ready: 'جاهز', queued: 'في الانتظار', downloading: 'جاري التحميل', done: 'تم', failed: 'فشل' };
   var STAGE_LABEL = {
     queued: 'في الانتظار…', downloading: 'جاري التحميل', merging: 'دمج الصوت والفيديو…', audio: 'تحويل إلى MP3…',
-    recoding: 'تحويل إلى MP4 (H.264 + AAC) ليناسب واتساب…', saving: 'الحفظ في المعرض…', story: 'قص الفيديو للستوري (أقل من 60 ثانية)…'
+    processing: 'جاري المعالجة…', recoding: 'تحويل إلى MP4 (H.264 + AAC) ليناسب واتساب…', saving: 'الحفظ في المعرض…', story: 'قص الفيديو للستوري (أقل من 60 ثانية)…'
   };
 
   function makeRow(p, n) {
     var r = {
-      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', referer: '', cutStart: '', cutEnd: '', state: 'empty', info: null, qid: p.mode === 'mp3' ? 'audio' : settings.quality, story: false,
+      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', referer: '', cutStart: '', cutEnd: '', precise: false, state: 'empty', info: null, qid: p.mode === 'mp3' ? 'audio' : settings.quality, story: false,
       jobId: null, percent: 0, speed: '', eta: -1, stage: 'queued', result: null, err: null, token: 0, autoStart: false, toastA: null, started: 0
     };
     var s = el('section', 'row');
     s.setAttribute('data-p', p.id); s.setAttribute('data-mode', p.mode);
     s.innerHTML =
       '<div class="row-top"><span class="num"></span><span class="row-top-end"><span class="chip"></span><button type="button" class="icon-btn rm" aria-label="حذف هذا المربع" hidden>' + I.trash + '</button></span></div>' +
+      '<div class="pickbar"><button type="button" class="btn pick">' + I.film + '<span>اختر فيديو من الهاتف</span></button>' +
+      '<button type="button" class="icon-btn clear3" aria-label="مسح">' + I.x + '</button></div>' +
       '<div class="field"><input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ألصق رابط الفيديو هنا" aria-label="رابط الفيديو">' +
       '<button type="button" class="icon-btn paste">' + I.clip + '<span>لصق</span></button>' +
       '<button type="button" class="icon-btn clear" aria-label="مسح">' + I.x + '</button></div>' +
@@ -201,7 +203,8 @@
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
       '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
       '<div class="cutfield"><div class="cutrow"><label>من<input type="text" class="cs" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="بداية القص"></label>' +
-      '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><div class="cutinfo"></div></div>' +
+      '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><div class="cutinfo"></div>' +
+      '<button type="button" class="opt precise" role="switch" aria-checked="false"><span>قص دقيق (أبطأ)<small>يعيد ترميز الفيديو لبداية ونهاية أدق. بدونه يكون القص أسرع وتقريبياً.</small></span></button></div>' +
       '<div class="controls"><button type="button" class="btn quality" aria-haspopup="dialog"><span class="ql"></span>' + I.chev + '</button>' +
       '<button type="button" class="btn primary dl">' + I.down + '<span>تحميل</span></button></div>' +
       '<div class="progress"><div class="stage"></div><div class="bar"><i></i></div>' +
@@ -249,6 +252,9 @@
     });
     r.nameInput.addEventListener('input', function () { r.customName = r.nameInput.value; persistRows(); });
     r.q('.rm').addEventListener('click', function () { removeRow(r); });
+    r.q('.pick').addEventListener('click', function () { pickFiles(r); });
+    r.q('.clear3').addEventListener('click', function () { resetRow(r); });
+    r.q('.precise').addEventListener('click', function () { r.precise = !r.precise; r.q('.precise').setAttribute('aria-checked', String(r.precise)); persistRows(); });
     r.csInput.addEventListener('input', function () { r.cutStart = r.csInput.value; updateCutInfo(r); persistRows(); });
     r.ceInput.addEventListener('input', function () { r.cutEnd = r.ceInput.value; updateCutInfo(r); persistRows(); });
     r.q('.clear').addEventListener('click', function () { resetRow(r); });
@@ -342,6 +348,8 @@
     if (r.story && q.id !== 'audio') ql += ' • ستوري';
     r.q('.ql').textContent = ql;
     r.q('.dl').disabled = st === 'analyzing';
+    if (r.p.mode !== 'dl') r.q('.dl span').textContent = r.p.mode === 'cut' ? 'قص وحفظ' : 'تحويل إلى MP3';
+    r.q('.precise').setAttribute('aria-checked', String(!!r.precise));
 
     // أزرار الحالات
     r.q('.story').hidden = !(r.result && !r.result.audio && !r.result.storyDone);
@@ -357,7 +365,7 @@
       r.q('.engine').hidden = !NEEDS_ENGINE[code];
       r.q('.login').hidden = !loginCase;
       r.q('.login').textContent = loginCase && acct[site] ? 'إعادة تسجيل الدخول' : 'تسجيل الدخول';
-      r.q('.browse2').hidden = !((code === 'unsupported' || code === 'extractor' || code === 'unknown' || code === 'unavailable'));
+      r.q('.browse2').hidden = !(r.p.mode === 'dl' && (code === 'unsupported' || code === 'extractor' || code === 'unknown' || code === 'unavailable'));
     }
     if (st === 'done' && r.result) {
       var res = r.result;
@@ -374,9 +382,9 @@
   function renderProgress(r) {
     if (r.state !== 'queued' && r.state !== 'downloading') return;
     var stage = r.state === 'queued' ? 'queued' : r.stage;
-    r.el.setAttribute('data-indet', (r.state === 'downloading' && r.p.mode === 'cut' && r.percent <= 0 && stage === 'downloading') ? '1' : '0');
-    r.q('.stage').textContent = STAGE_LABEL[stage] || 'جاري التحميل';
-    var showPct = r.state === 'downloading' && (stage === 'downloading' || stage === 'saving');
+    r.el.setAttribute('data-indet', (r.state === 'downloading' && r.percent <= 0 && (stage === 'processing' || (r.p.mode === 'cut' && stage === 'downloading'))) ? '1' : '0');
+    r.q('.stage').textContent = stage === 'processing' ? (r.p.mode === 'mp3' ? 'جاري التحويل إلى MP3…' : 'جاري قص الفيديو…') : (STAGE_LABEL[stage] || 'جاري التحميل');
+    var showPct = r.state === 'downloading' && (stage === 'downloading' || stage === 'saving' || stage === 'processing');
     r.q('.bar i').style.width = (r.state === 'queued' ? 0 : Math.max(2, Math.min(100, r.percent))) + '%';
     r.q('.pct').textContent = showPct ? Math.floor(r.percent) + '%' : '';
     var bits = [];
@@ -393,7 +401,7 @@
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     if (r.jobId) { delete rowByJob[r.jobId]; }
     r.url = ''; r.referer = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
-    r.autoStart = false; r.qid = r.p.mode === 'mp3' ? 'audio' : settings.quality; r.cutStart = ''; r.cutEnd = '';
+    r.autoStart = false; r.qid = r.p.mode === 'mp3' ? 'audio' : settings.quality; r.cutStart = ''; r.cutEnd = ''; r.precise = false;
     setState(r, 'empty');
   }
 
@@ -446,6 +454,7 @@
       if (r.state === 'analyzing') r.autoStart = true;
       return;
     }
+    if (r.p.mode !== 'dl') return startLocal(r, announce);
     if (!r.url) { if (announce) toast('error', 'ألصق رابط الفيديو أولاً.'); return; }
     if (!r.info) { r.autoStart = true; r.err = null; analyzeRow(r); return; }
     var cut = null;
@@ -475,6 +484,59 @@
     if (announce) toast('info', audio ? 'بدأ تحميل الصوت…' : 'بدأ التحميل…', 2200);
   }
 
+  /* فيديوهات الهاتف (تبويبا قص و MP3) */
+  function stripExt(n) { return String(n || '').replace(/\.[A-Za-z0-9]{1,5}$/, ''); }
+  function fillLocal(r, f) {
+    r.token++;
+    r.url = f.uri; r.referer = ''; r.customName = ''; r.cutStart = ''; r.cutEnd = ''; r.err = null; r.result = null; r.jobId = null; r.percent = 0;
+    r.info = { title: stripExt(f.name) || 'فيديو', thumbnail: f.thumb || '', duration: f.duration || 0, uploader: fmtSize(f.size), qualities: [], local: true };
+    r.qid = r.p.mode === 'mp3' ? 'audio' : 'best';
+    setState(r, 'ready');
+  }
+  function pickFiles(r) {
+    Native.call('pickVideos', { multiple: true }).then(function (res) {
+      var files = (res && res.files) || [];
+      if (!files.length) return;
+      var list = rows[r.p.id], i = list.indexOf(r);
+      files.forEach(function (f, k) {
+        var target = k === 0 ? r : null;
+        if (!target) {
+          for (var j = i + 1; j < list.length; j++) {
+            if (!list[j].url && list[j].state === 'empty') { target = list[j]; break; }
+          }
+          if (!target) target = addRow(r.p, null, false);
+        }
+        if (target && target.el) fillLocal(target, f);
+      });
+      if (files.length > 1) toast('success', 'تم اختيار ' + files.length + ' فيديو.', 2200);
+    }, function (e) { if (e.code !== 'cancelled') toast('error', e.message || 'تعذّر اختيار الفيديو.'); });
+  }
+  function startLocal(r, announce) {
+    if (!r.url || !r.info) { if (announce) toast('error', 'اختر فيديو من الهاتف أولاً.'); return; }
+    var cut = null, mode = r.p.mode === 'mp3' ? 'mp3' : 'cut';
+    if (mode === 'cut') {
+      cut = cutRange(r);
+      if (cut.error) return toast('error', cut.error);
+      if (cut.whole) return toast('error', 'حدّد بداية أو نهاية للقص أولاً.');
+    }
+    var jobId = uid(r.id);
+    r.jobId = jobId; rowByJob[jobId] = r;
+    r.percent = 0; r.speed = ''; r.eta = -1; r.stage = 'processing'; r.err = null; r.result = null; r.started = Date.now();
+    setState(r, 'queued');
+    Native.call('ensurePermissions').then(function (p) {
+      if (p && p.granted === false) throw Object.assign(new Error('بدون صلاحية التخزين لا يمكن حفظ الملف. اسمح بها من إعدادات الهاتف.'), { code: 'permission' });
+      return Native.call('localProcess', {
+        id: jobId, uri: r.url, mode: mode, folder: settings.folder, precise: !!r.precise,
+        title: (r.customName || '').trim() || ((r.info.title || '') + (cut ? ' (مقطع)' : '')),
+        start: cut ? cut.start : -1, end: cut ? cut.end : -1
+      });
+    }).catch(function (e) {
+      delete rowByJob[jobId]; r.jobId = null;
+      failRow(r, e.code || 'unknown', e.message || 'تعذّر بدء المعالجة.');
+    });
+    if (announce) toast('info', mode === 'mp3' ? 'بدأ التحويل إلى MP3…' : 'بدأ قص الفيديو…', 2200);
+  }
+
   function cancelRow(r) {
     if (!r.jobId) return;
     r.q('.cancel').disabled = true;
@@ -487,7 +549,7 @@
     list = list.filter(function (r) { return !(r.state === 'failed' && r.err && NO_RETRY[r.err.code]); });
     if (!list.length) {
       var busy = rows[p.id].some(function (r) { return r.state === 'queued' || r.state === 'downloading'; });
-      return toast('info', busy ? 'التحميلات شغّالة بالفعل.' : 'ألصق رابطاً واحداً على الأقل في هذا التبويب.');
+      return toast('info', busy ? 'العمليات شغّالة بالفعل.' : (p.mode === 'dl' ? 'ألصق رابطاً واحداً على الأقل في هذا التبويب.' : 'اختر فيديو واحداً على الأقل في هذا التبويب.'));
     }
     toast('info', 'بدأ تحميل ' + list.length + (list.length === 1 ? ' فيديو' : ' ملفات') + ' (بالدور عند الازدحام).', 2600);
     list.forEach(function (r) { startRow(r, false); });
@@ -507,7 +569,7 @@
   function onDone(d) {
     var r = rowByJob[d.id]; if (!r) return;
     var q = currentQ(r);
-    var res = { uri: d.uri, name: d.name, size: d.size, mime: d.mime, folder: d.folder, friendly: d.friendly, audio: q.id === 'audio', storyDone: false };
+    var res = { uri: d.uri, name: d.name, size: d.size, mime: d.mime, folder: d.folder, friendly: d.friendly, audio: q.id === 'audio' || r.p.mode === 'mp3', storyDone: false };
     var wantStory = r.story && !res.audio;
     if (wantStory) {
       r.stage = 'story'; r.percent = 100; r.state = 'downloading'; render(r);
@@ -707,7 +769,7 @@
       var bar = el('div', 'panel-bar');
       bar.innerHTML = '<div class="panel-title">' + p.icon + '<div>' + p.name + '<span class="panel-sub">' + (p.sub || (ROWS_PER_TAB + ' روابط في نفس الوقت')) + '</span></div></div>' +
         '<div class="bar-actions"><button type="button" class="icon-btn clearall" aria-label="مسح كل المربعات" title="مسح الكل">' + I.x + '</button>' +
-        '<button type="button" class="btn primary sm all">' + I.down + '<span>تحميل الكل</span></button></div>';
+        '<button type="button" class="btn primary sm all">' + I.down + '<span>' + (p.mode === 'cut' ? 'قص الكل' : p.mode === 'mp3' ? 'تحويل الكل' : 'تحميل الكل') + '</span></button></div>';
       $('.all', bar).addEventListener('click', function () { downloadAll(p); });
       $('.clearall', bar).addEventListener('click', function () { clearAll(p); });
       panel.appendChild(bar);
@@ -1030,7 +1092,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         var s = saved[r.id]; if (!s) { render(r); return; }
-        r.url = s.url || ''; r.cutStart = s.cutStart || ''; r.cutEnd = s.cutEnd || ''; r.referer = s.referer || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = r.p.mode === 'mp3' ? 'audio' : (s.qid || settings.quality); r.story = !!s.story;
+        r.url = s.url || ''; r.precise = !!s.precise; r.cutStart = s.cutStart || ''; r.cutEnd = s.cutEnd || ''; r.referer = s.referer || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = r.p.mode === 'mp3' ? 'audio' : (s.qid || settings.quality); r.story = !!s.story;
         r.result = s.result || null; r.err = s.err || null; r.jobId = s.jobId || null;
         var st = s.state;
         if (st === 'analyzing') st = r.info ? 'ready' : (r.url ? 'empty' : 'empty');
