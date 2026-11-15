@@ -98,7 +98,9 @@ class ManzelPlugin : Plugin() {
         val folder = call.getString("folder") ?: "movies"
         val title = call.getString("title") ?: ""
         val referer = call.getString("referer") ?: ""
-        Engine.submit(context, Job(id, url, formatId, recode, folder, qualityId, title, referer))
+        val start = call.getDouble("start") ?: -1.0
+        val end = call.getDouble("end") ?: -1.0
+        Engine.submit(context, Job(id, url, formatId, recode, folder, qualityId, title, referer, start, end))
         call.resolve(JSObject().put("queued", true))
     }
 

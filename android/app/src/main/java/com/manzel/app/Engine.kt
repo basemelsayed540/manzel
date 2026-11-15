@@ -30,7 +30,9 @@ class Job(
     val folder: String,
     val qualityId: String,
     val title: String,
-    val referer: String = ""
+    val referer: String = "",
+    val startSec: Double = -1.0,
+    val endSec: Double = -1.0
 ) {
     @Volatile var percent = 0.0
     @Volatile var stage = "queued"
@@ -286,6 +288,12 @@ object Engine {
             req.addOption("--socket-timeout", "20")
             req.addOption("--concurrent-fragments", "4")
             if (job.referer.isNotEmpty()) req.addOption("--referer", job.referer)
+            if (job.endSec > 0.0) {
+                // قص مقطع فقط (تقريبي عند أقرب إطار رئيسي بدون إعادة ترميز)
+                val a = String.format(java.util.Locale.US, "%.2f", if (job.startSec > 0.0) job.startSec else 0.0)
+                val b = String.format(java.util.Locale.US, "%.2f", job.endSec)
+                req.addOption("--download-sections", "*$a-$b")
+            }
             ck = Session.applyTo(ctx, req, job.url)
             val audio = job.qualityId == "audio"
             if (audio) {

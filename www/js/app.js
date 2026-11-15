@@ -53,16 +53,12 @@
 
   /* ----------------------------------------------------------------- المنصات */
   var PLATFORMS = [
-    { id: 'facebook', name: 'فيسبوك', hosts: /(^|\.)(facebook\.com|fb\.watch|fb\.com|fb\.me)$/,
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 8.5h3V4.5h-3a4 4 0 0 0-4 4V11H7v4h3v6h4v-6h3l1-4h-4V8.5z"/></svg>' },
-    { id: 'youtube', name: 'يوتيوب', hosts: /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/,
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="4"/><path d="m10 9.5 5 2.5-5 2.5z"/></svg>' },
-    { id: 'instagram', name: 'انستجرام', hosts: /(^|\.)(instagram\.com|instagr\.am)$/,
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><path d="M16.8 7.2h.01"/></svg>' },
-    { id: 'tiktok', name: 'تيك توك', hosts: /(^|\.)(tiktok\.com)$/,
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' },
-    { id: 'web', name: 'أي رابط', hosts: null, sub: 'أي موقع من الإنترنت',
-      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg>' }
+    { id: 'web', name: 'تحميل', mode: 'dl', hosts: null, sub: 'من أي رابط في الإنترنت',
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>' },
+    { id: 'cut', name: 'قص', mode: 'cut', hosts: null, sub: 'حمّل جزءاً فقط من الفيديو',
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><path d="m8 8 11 9M8 16 19 7"/></svg>' },
+    { id: 'mp3', name: 'MP3', mode: 'mp3', hosts: null, sub: 'حوّل أي فيديو إلى صوت',
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' }
   ];
   var PBYID = {}; PLATFORMS.forEach(function (p) { PBYID[p.id] = p; });
 
@@ -93,8 +89,8 @@
   var rows = {};          // platformId -> [row]
   var rowByJob = {};      // jobId -> row
   var appInfo = { engineVersion: '', appVersionName: '', appVersionCode: 0, sdk: 0 };
-  var activeTab = lsGet('manzel.tab', 'facebook');
-  if (!PBYID[activeTab]) activeTab = 'facebook';
+  var activeTab = lsGet('manzel.tab', 'web');
+  if (!PBYID[activeTab]) activeTab = 'web';
 
   function saveSettings() { lsSet('manzel.settings', settings); }
   function saveHistory() { lsSet('manzel.history', history_.slice(0, HISTORY_MAX)); }
@@ -104,7 +100,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         if (!r.url && r.state === 'empty') return;
-        o[r.id] = { url: r.url, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
+        o[r.id] = { url: r.url, cutStart: r.cutStart, cutEnd: r.cutEnd, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
       });
     });
     lsSet('manzel.rows', o);
@@ -190,11 +186,11 @@
 
   function makeRow(p, n) {
     var r = {
-      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', referer: '', state: 'empty', info: null, qid: settings.quality, story: false,
+      id: p.id + '-' + n, p: p, n: n, url: '', customName: '', referer: '', cutStart: '', cutEnd: '', state: 'empty', info: null, qid: p.mode === 'mp3' ? 'audio' : settings.quality, story: false,
       jobId: null, percent: 0, speed: '', eta: -1, stage: 'queued', result: null, err: null, token: 0, autoStart: false, toastA: null, started: 0
     };
     var s = el('section', 'row');
-    s.setAttribute('data-p', p.id);
+    s.setAttribute('data-p', p.id); s.setAttribute('data-mode', p.mode);
     s.innerHTML =
       '<div class="row-top"><span class="num"></span><span class="row-top-end"><span class="chip"></span><button type="button" class="icon-btn rm" aria-label="حذف هذا المربع" hidden>' + I.trash + '</button></span></div>' +
       '<div class="field"><input type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ألصق رابط الفيديو هنا" aria-label="رابط الفيديو">' +
@@ -204,6 +200,8 @@
       '<div class="preview"><div class="thumb">' + I.film + '<img alt="" referrerpolicy="no-referrer" hidden><span class="dur" hidden></span></div>' +
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
       '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
+      '<div class="cutfield"><div class="cutrow"><label>من<input type="text" class="cs" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="بداية القص"></label>' +
+      '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><div class="cutinfo"></div></div>' +
       '<div class="controls"><button type="button" class="btn quality" aria-haspopup="dialog"><span class="ql"></span>' + I.chev + '</button>' +
       '<button type="button" class="btn primary dl">' + I.down + '<span>تحميل</span></button></div>' +
       '<div class="progress"><div class="stage"></div><div class="bar"><i></i></div>' +
@@ -225,6 +223,7 @@
     r.q = function (sel) { return $(sel, s); };
     r.input = r.q('.field input');
     r.nameInput = r.q('.nm');
+    r.csInput = r.q('.cs'); r.ceInput = r.q('.ce');
     if (p.id === 'web') r.input.placeholder = 'ألصق أي رابط فيديو هنا';
     bindRow(r);
     return r;
@@ -250,6 +249,8 @@
     });
     r.nameInput.addEventListener('input', function () { r.customName = r.nameInput.value; persistRows(); });
     r.q('.rm').addEventListener('click', function () { removeRow(r); });
+    r.csInput.addEventListener('input', function () { r.cutStart = r.csInput.value; updateCutInfo(r); persistRows(); });
+    r.ceInput.addEventListener('input', function () { r.cutEnd = r.ceInput.value; updateCutInfo(r); persistRows(); });
     r.q('.clear').addEventListener('click', function () { resetRow(r); });
     r.q('.clear2').addEventListener('click', function () { resetRow(r); });
     r.q('.fresh').addEventListener('click', function () { resetRow(r); });
@@ -273,6 +274,34 @@
     return l[0];
   }
 
+  /* قص: قراءة الوقت (ثوانٍ أو د:ث أو س:د:ث). null = فارغ، NaN = غير صالح */
+  function parseTime(t) {
+    t = String(t || '').trim().replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).replace(/[٫،]/g, '.');
+    if (!t) return null;
+    if (!/^\d+(\.\d+)?(:\d{1,2}(\.\d+)?){0,2}$/.test(t)) return NaN;
+    var p = t.split(':').map(Number), v = 0;
+    for (var i = 0; i < p.length; i++) v = v * 60 + p[i];
+    return v;
+  }
+  function cutRange(r) {
+    var a = parseTime(r.cutStart), b = parseTime(r.cutEnd), dur = (r.info && r.info.duration) || 0;
+    if (isNaN(a) || isNaN(b)) return { error: 'اكتب الوقت بصيغة 1:30 أو بالثواني (مثل 90).' };
+    var st = a == null ? 0 : a, en = b == null ? dur : b;
+    if (!en) return { error: 'اكتب وقت النهاية.' };
+    if (dur && st >= dur) return { error: 'وقت البداية بعد نهاية الفيديو (' + fmtDur(dur) + ').' };
+    if (dur && en > dur) en = dur;
+    if (en <= st) return { error: 'وقت النهاية يجب أن يكون بعد البداية.' };
+    var whole = st <= 0 && dur && en >= dur;
+    return { start: st, end: en, len: en - st, whole: !!whole };
+  }
+  function updateCutInfo(r) {
+    if (r.p.mode !== 'cut') return;
+    var box = r.q('.cutinfo'); if (!r.info) { box.textContent = ''; return; }
+    var c = cutRange(r);
+    box.classList.toggle('bad', !!c.error);
+    box.textContent = c.error ? c.error : (c.whole ? 'لم تحدد جزءاً بعد — اكتب البداية أو النهاية.' : 'طول المقطع: ' + (fmtDur(c.len) || '0:01') + ' (من ' + (fmtDur(c.start) || '0:00') + ' إلى ' + fmtDur(c.end) + ')');
+  }
+
   function render(r) {
     var s = r.el, st = r.state;
     s.setAttribute('data-state', st);
@@ -284,6 +313,11 @@
     r.q('.paste').disabled = busy; r.q('.clear').disabled = busy;
 
     if (r.nameInput.value !== r.customName) r.nameInput.value = r.customName;
+    if (r.csInput.value !== r.cutStart) r.csInput.value = r.cutStart;
+    if (r.ceInput.value !== r.cutEnd) r.ceInput.value = r.cutEnd;
+    if (r.info && r.info.duration) r.ceInput.placeholder = fmtDur(r.info.duration);
+    r.csInput.disabled = busy; r.ceInput.disabled = busy;
+    updateCutInfo(r);
     r.nameInput.placeholder = r.info && r.info.title ? 'اسم الملف: ' + r.info.title : 'اسم الملف (اختياري)';
     r.nameInput.disabled = busy;
     // المعاينة
@@ -323,7 +357,7 @@
       r.q('.engine').hidden = !NEEDS_ENGINE[code];
       r.q('.login').hidden = !loginCase;
       r.q('.login').textContent = loginCase && acct[site] ? 'إعادة تسجيل الدخول' : 'تسجيل الدخول';
-      r.q('.browse2').hidden = !(r.p.id === 'web' && (code === 'unsupported' || code === 'extractor' || code === 'unknown' || code === 'unavailable'));
+      r.q('.browse2').hidden = !((code === 'unsupported' || code === 'extractor' || code === 'unknown' || code === 'unavailable'));
     }
     if (st === 'done' && r.result) {
       var res = r.result;
@@ -340,6 +374,7 @@
   function renderProgress(r) {
     if (r.state !== 'queued' && r.state !== 'downloading') return;
     var stage = r.state === 'queued' ? 'queued' : r.stage;
+    r.el.setAttribute('data-indet', (r.state === 'downloading' && r.p.mode === 'cut' && r.percent <= 0 && stage === 'downloading') ? '1' : '0');
     r.q('.stage').textContent = STAGE_LABEL[stage] || 'جاري التحميل';
     var showPct = r.state === 'downloading' && (stage === 'downloading' || stage === 'saving');
     r.q('.bar i').style.width = (r.state === 'queued' ? 0 : Math.max(2, Math.min(100, r.percent))) + '%';
@@ -358,7 +393,7 @@
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     if (r.jobId) { delete rowByJob[r.jobId]; }
     r.url = ''; r.referer = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
-    r.autoStart = false; r.qid = settings.quality;
+    r.autoStart = false; r.qid = r.p.mode === 'mp3' ? 'audio' : settings.quality; r.cutStart = ''; r.cutEnd = '';
     setState(r, 'empty');
   }
 
@@ -366,7 +401,7 @@
   function onUrlChanged(r, raw, immediate) {
     var url = extractUrl(raw) || String(raw || '').trim();
     if (url === r.url && (r.info || r.state === 'analyzing')) { render(r); return; }
-    r.token++; r.info = null; r.result = null; r.err = null; r.customName = ''; r.referer = '';
+    r.token++; r.info = null; r.result = null; r.err = null; r.customName = ''; r.referer = ''; r.cutStart = ''; r.cutEnd = '';
     if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
     r.url = url;
     if (!url) { r.autoStart = false; setState(r, 'empty'); return; }
@@ -375,16 +410,7 @@
 
   function analyzeRow(r) {
     var url = r.url;
-    var found = platformOfUrl(url);
     if (!/^https?:\/\//i.test(url)) return failRow(r, 'unsupported', 'هذا ليس رابطاً صحيحاً. انسخ الرابط كاملاً (يبدأ بـ https://).');
-    if (r.p.id !== 'web') {
-      if (found && found !== r.p.id) {
-        return failRow(r, 'wrongtab', 'هذا رابط ' + PBYID[found].name + '. افتح تبويب «' + PBYID[found].name + '» ثم ألصقه هناك.');
-      }
-      if (!found) {
-        return failRow(r, 'unsupported', 'الرابط لا يبدو رابط ' + r.p.name + '. تأكد من نسخ رابط الفيديو من التطبيق، أو استخدم تبويب «أي رابط».');
-      }
-    }
     var tok = ++r.token;
     r.err = null;
     setState(r, 'analyzing');
@@ -395,7 +421,8 @@
       if (r.toastA) { r.toastA.dismiss(); r.toastA = null; }
       r.info = info;
       var list = qualitiesOf(r), want = r.qid;
-      if (!list.some(function (x) { return x.id === want; })) r.qid = 'best';
+      if (r.p.mode === 'mp3') r.qid = 'audio';
+      else if (!list.some(function (x) { return x.id === want; })) r.qid = 'best';
       else r.qid = want;
       setState(r, 'ready');
       if (r.autoStart) { r.autoStart = false; startRow(r, false); }
@@ -421,6 +448,12 @@
     }
     if (!r.url) { if (announce) toast('error', 'ألصق رابط الفيديو أولاً.'); return; }
     if (!r.info) { r.autoStart = true; r.err = null; analyzeRow(r); return; }
+    var cut = null;
+    if (r.p.mode === 'cut') {
+      cut = cutRange(r);
+      if (cut.error) return toast('error', cut.error);
+      if (cut.whole) return toast('error', 'حدّد بداية أو نهاية للقص أولاً، أو استخدم تبويب «تحميل» للفيديو كاملاً.');
+    }
     var q = currentQ(r);
     var audio = q.id === 'audio';
     var jobId = uid(r.id);
@@ -431,7 +464,8 @@
       if (p && p.granted === false) throw Object.assign(new Error('بدون صلاحية التخزين لا يمكن حفظ الفيديو. اسمح بها من إعدادات الهاتف ثم أعد المحاولة.'), { code: 'permission' });
       return Native.call('download', {
         id: jobId, url: r.url, quality: q.id, formatId: q.fid, recode: !!q.recode,
-        folder: settings.folder, title: (r.customName || '').trim() || r.info.title || '', referer: r.referer || ''
+        folder: settings.folder, title: (r.customName || '').trim() || ((r.info.title || '') + (cut ? ' (مقطع)' : '')), referer: r.referer || '',
+        start: cut ? cut.start : -1, end: cut ? cut.end : -1
       });
     }).catch(function (e) {
       delete rowByJob[jobId];
@@ -996,7 +1030,7 @@
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
         var s = saved[r.id]; if (!s) { render(r); return; }
-        r.url = s.url || ''; r.referer = s.referer || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = s.qid || settings.quality; r.story = !!s.story;
+        r.url = s.url || ''; r.cutStart = s.cutStart || ''; r.cutEnd = s.cutEnd || ''; r.referer = s.referer || ''; r.customName = s.customName || ''; r.info = s.info || null; r.qid = r.p.mode === 'mp3' ? 'audio' : (s.qid || settings.quality); r.story = !!s.story;
         r.result = s.result || null; r.err = s.err || null; r.jobId = s.jobId || null;
         var st = s.state;
         if (st === 'analyzing') st = r.info ? 'ready' : (r.url ? 'empty' : 'empty');
