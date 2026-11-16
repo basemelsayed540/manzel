@@ -57,6 +57,8 @@
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>' },
     { id: 'cut', name: 'قص', mode: 'cut', hosts: null, sub: 'اقتطع جزءاً من فيديو على هاتفك',
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="2.5"/><circle cx="6" cy="17.5" r="2.5"/><path d="m8 8 11 9M8 16 19 7"/></svg>' },
+    { id: 'mix', name: 'تركيب', mode: 'mix', hosts: null, sub: 'ركّب فيديوهات وصور وموسيقى في فيديو واحد',
+      icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2.5"/><path d="M3 20h5M11 20h10"/><path d="m10 8.5 4 1.5-4 1.5z"/></svg>' },
     { id: 'mp3', name: 'MP3', mode: 'mp3', hosts: null, sub: 'حوّل فيديو من هاتفك إلى MP3',
       icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.4 2.4 2 4 4.5 4.2"/></svg>' }
   ];
@@ -99,7 +101,7 @@
     var o = {};
     PLATFORMS.forEach(function (p) {
       rows[p.id].forEach(function (r) {
-        if (!r.url && r.state === 'empty') return;
+        if (r.p.mode === 'mix' || (!r.url && r.state === 'empty')) return;
         o[r.id] = { url: r.url, precise: r.precise, cutStart: r.cutStart, cutEnd: r.cutEnd, referer: r.referer, customName: r.customName, state: r.state, info: r.info, qid: r.qid, story: r.story, jobId: r.jobId, result: r.result, err: r.err };
       });
     });
@@ -202,6 +204,7 @@
       '<div class="preview"><div class="thumb">' + I.film + '<img alt="" referrerpolicy="no-referrer" hidden><span class="dur" hidden></span></div>' +
       '<div class="meta"><div class="title"></div><div class="sub"></div></div></div>' +
       '<div class="namefield"><input type="text" class="nm" maxlength="80" autocomplete="off" placeholder="اسم الملف (اختياري)" aria-label="اسم الملف"></div>' +
+      '<div class="mixbox"></div>' +
       '<div class="cutfield"><div class="cutrow"><label>من<input type="text" class="cs" inputmode="text" autocomplete="off" placeholder="0:00" aria-label="بداية القص"></label>' +
       '<label>إلى<input type="text" class="ce" inputmode="text" autocomplete="off" placeholder="نهاية" aria-label="نهاية القص"></label></div><button type="button" class="btn trimedit">' + I.film + '<span>فتح محرر القص ومعاينة الفيديو</span></button><div class="cutinfo"></div>' +
       '<button type="button" class="opt precise" role="switch" aria-checked="false"><span>قص دقيق (أبطأ)<small>يعيد ترميز الفيديو لبداية ونهاية أدق. بدونه يكون القص أسرع وتقريبياً.</small></span></button></div>' +
@@ -227,6 +230,7 @@
     r.input = r.q('.field input');
     r.nameInput = r.q('.nm');
     r.csInput = r.q('.cs'); r.ceInput = r.q('.ce');
+    if (p.mode === 'mix') { r.clips = []; r.music = null; r.keepOrig = true; r.vol = 100; r.imgDur = 3; r.aspect = 'v'; buildMix(r); }
     if (p.id === 'web') r.input.placeholder = 'ألصق أي رابط فيديو هنا';
     bindRow(r);
     return r;
@@ -350,7 +354,7 @@
     if (r.story && q.id !== 'audio') ql += ' • ستوري';
     r.q('.ql').textContent = ql;
     r.q('.dl').disabled = st === 'analyzing';
-    if (r.p.mode !== 'dl') r.q('.dl span').textContent = r.p.mode === 'cut' ? 'قص وحفظ' : 'تحويل إلى MP3';
+    if (r.p.mode !== 'dl') r.q('.dl span').textContent = r.p.mode === 'cut' ? 'قص وحفظ' : r.p.mode === 'mix' ? 'تركيب وحفظ' : 'تحويل إلى MP3';
     r.q('.precise').setAttribute('aria-checked', String(!!r.precise));
 
     // أزرار الحالات
@@ -385,7 +389,7 @@
     if (r.state !== 'queued' && r.state !== 'downloading') return;
     var stage = r.state === 'queued' ? 'queued' : r.stage;
     r.el.setAttribute('data-indet', (r.state === 'downloading' && r.percent <= 0 && (stage === 'processing' || (r.p.mode === 'cut' && stage === 'downloading'))) ? '1' : '0');
-    r.q('.stage').textContent = stage === 'processing' ? (r.p.mode === 'mp3' ? 'جاري التحويل إلى MP3…' : 'جاري قص الفيديو…') : (STAGE_LABEL[stage] || 'جاري التحميل');
+    r.q('.stage').textContent = stage === 'processing' ? (r.p.mode === 'mp3' ? 'جاري التحويل إلى MP3…' : r.p.mode === 'mix' ? 'جاري تركيب الفيديو… قد يستغرق دقائق' : 'جاري قص الفيديو…') : (STAGE_LABEL[stage] || 'جاري التحميل');
     var showPct = r.state === 'downloading' && (stage === 'downloading' || stage === 'saving' || stage === 'processing');
     r.q('.bar i').style.width = (r.state === 'queued' ? 0 : Math.max(2, Math.min(100, r.percent))) + '%';
     r.q('.pct').textContent = showPct ? Math.floor(r.percent) + '%' : '';
@@ -404,6 +408,7 @@
     if (r.jobId) { delete rowByJob[r.jobId]; }
     r.url = ''; r.referer = ''; r.customName = ''; r.info = null; r.result = null; r.err = null; r.jobId = null; r.percent = 0; r.story = false;
     r.autoStart = false; r.qid = r.p.mode === 'mp3' ? 'audio' : settings.quality; r.cutStart = ''; r.cutEnd = ''; r.precise = false;
+    if (r.p.mode === 'mix') { r.clips = []; r.music = null; buildMix(r); return; }
     setState(r, 'empty');
   }
 
@@ -507,6 +512,115 @@
       toast('error', e.code === 'unimplemented' ? e.message : (e.message || 'تعذّر فتح المحرر.'));
     });
   }
+  /* ----------------------------------------------------------------- تركيب */
+  function mixTotal(r) {
+    var t = 0;
+    r.clips.forEach(function (c) { t += c.type === 'image' ? r.imgDur : clipLen(c); });
+    return t;
+  }
+  function clipLen(c) {
+    var full = c.duration || 0, st = c.start > 0 ? c.start : 0, en = c.end > 0 ? Math.min(c.end, full || c.end) : full;
+    return Math.max(0, en - st);
+  }
+  function buildMix(r) {
+    var box = r.q('.mixbox');
+    box.innerHTML =
+      '<div class="mixlist"></div>' +
+      '<div class="mixadd"><button type="button" class="btn addclip">' + I.film + '<span>إضافة فيديو أو صور</span></button>' +
+      '<button type="button" class="btn addmusic"><span>♪ إضافة موسيقى</span></button></div>' +
+      '<div class="mixmusic" hidden><span class="mname"></span><button type="button" class="icon-btn mrm" aria-label="إزالة الموسيقى">' + I.x + '</button></div>' +
+      '<div class="mixopts">' +
+      '<div class="seg"><button type="button" data-a="v" aria-pressed="true">طولي 9:16</button><button type="button" data-a="h" aria-pressed="false">عرضي 16:9</button><button type="button" data-a="s" aria-pressed="false">مربع</button></div>' +
+      '<label class="mrow">مدة كل صورة (ثانية)<input type="number" class="imgdur" min="1" max="30" value="3" inputmode="numeric"></label>' +
+      '<label class="mrow chk"><input type="checkbox" class="keeporig" checked> إبقاء صوت الفيديوهات الأصلي</label>' +
+      '<label class="mrow vrow" hidden>مستوى الموسيقى<input type="range" class="vol" min="0" max="100" value="100"></label>' +
+      '</div><div class="mixinfo"></div>';
+    var q = function (s) { return $(s, box); };
+    q('.addclip').addEventListener('click', function () {
+      Native.call('pickVideos', { kind: 'visual', multiple: true }).then(function (res) {
+        var files = (res && res.files) || [];
+        files.forEach(function (f) {
+          if (r.clips.length >= 30) return;
+          r.clips.push({ uri: f.uri, name: f.name, type: f.type === 'image' ? 'image' : 'video', duration: f.duration || 0, thumb: f.thumb || '', start: -1, end: -1 });
+        });
+        if (files.length) updateMix(r);
+      }, function (e) { if (e.code !== 'cancelled') toast('error', e.message || 'تعذّر اختيار الملفات.'); });
+    });
+    q('.addmusic').addEventListener('click', function () {
+      Native.call('pickVideos', { kind: 'audio', multiple: false }).then(function (res) {
+        var f = ((res && res.files) || [])[0]; if (!f) return;
+        r.music = { uri: f.uri, name: f.name, duration: f.duration || 0 };
+        updateMix(r);
+      }, function (e) { if (e.code !== 'cancelled') toast('error', e.message || 'تعذّر اختيار الملف.'); });
+    });
+    q('.mrm').addEventListener('click', function () { r.music = null; updateMix(r); });
+    box.querySelectorAll('.seg button').forEach(function (b) {
+      b.addEventListener('click', function () { r.aspect = b.getAttribute('data-a'); updateMix(r); });
+    });
+    q('.imgdur').addEventListener('input', function () { var v = parseFloat(this.value); r.imgDur = v >= 1 && v <= 30 ? v : 3; updateMix(r, true); });
+    q('.keeporig').addEventListener('change', function () { r.keepOrig = this.checked; updateMix(r); });
+    q('.vol').addEventListener('input', function () { r.vol = +this.value; });
+    updateMix(r);
+  }
+  function updateMix(r, noList) {
+    var box = r.q('.mixbox');
+    var list = $('.mixlist', box);
+    if (!noList) {
+      list.innerHTML = '';
+      r.clips.forEach(function (c, i) {
+        var it = el('div', 'mixitem');
+        var len = c.type === 'image' ? r.imgDur : clipLen(c);
+        it.innerHTML = '<div class="mthumb">' + (c.thumb ? '<img alt="" src="' + c.thumb + '">' : I.film) + '</div>' +
+          '<div class="mmeta"><div class="mt"></div><div class="ms">' + (c.type === 'image' ? 'صورة' : 'فيديو') + (len ? ' • ' + (fmtDur(len) || '0:01') : '') + '</div></div>' +
+          '<div class="mbtns">' + (c.type === 'video' ? '<button type="button" class="icon-btn mtrim" aria-label="قص هذا الفيديو">✂</button>' : '') +
+          '<button type="button" class="icon-btn mup" aria-label="للأعلى">↑</button><button type="button" class="icon-btn mdn" aria-label="للأسفل">↓</button>' +
+          '<button type="button" class="icon-btn mdel" aria-label="حذف">' + I.x + '</button></div>';
+        $('.mt', it).textContent = (i + 1) + '. ' + (c.name || '');
+        var tr = $('.mtrim', it);
+        if (tr) tr.addEventListener('click', function () {
+          Native.call('openTrimmer', { uri: c.uri, start: c.start > 0 ? c.start : -1, end: c.end > 0 ? c.end : -1 }).then(function (res) {
+            c.start = res.start; c.end = res.end; updateMix(r);
+          }, function (e) { if (e.code !== 'cancelled') toast('error', e.message || 'تعذّر فتح المحرر.'); });
+        });
+        $('.mup', it).addEventListener('click', function () { if (i > 0) { r.clips.splice(i - 1, 0, r.clips.splice(i, 1)[0]); updateMix(r); } });
+        $('.mdn', it).addEventListener('click', function () { if (i < r.clips.length - 1) { r.clips.splice(i + 1, 0, r.clips.splice(i, 1)[0]); updateMix(r); } });
+        $('.mdel', it).addEventListener('click', function () { r.clips.splice(i, 1); updateMix(r); });
+        list.appendChild(it);
+      });
+    }
+    var mm = $('.mixmusic', box); mm.hidden = !r.music;
+    if (r.music) $('.mname', mm).textContent = '♪ ' + r.music.name;
+    $('.vrow', box).hidden = !r.music;
+    box.querySelectorAll('.seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-a') === r.aspect)); });
+    var total = mixTotal(r);
+    $('.mixinfo', box).textContent = r.clips.length ? ('عدد المقاطع: ' + r.clips.length + ' • المدة الكلية: ' + (fmtDur(total) || '0:01')) : 'ابدأ بإضافة فيديوهات أو صور من هاتفك.';
+    if (r.state === 'empty' || r.state === 'ready' || r.state === 'failed') {
+      if (r.clips.length) { r.url = 'mix'; r.info = { title: 'تركيب', thumbnail: '', duration: total, uploader: '', qualities: [], local: true }; if (r.state !== 'failed') r.state = 'ready'; }
+      else { r.url = ''; r.info = null; r.state = 'empty'; }
+      render(r);
+    }
+  }
+  function startMix(r, announce) {
+    if (!r.clips.length) { if (announce) toast('error', 'أضف فيديو أو صورة أولاً.'); return; }
+    var jobId = uid(r.id);
+    r.jobId = jobId; rowByJob[jobId] = r;
+    r.percent = 0; r.speed = ''; r.eta = -1; r.stage = 'processing'; r.err = null; r.result = null; r.started = Date.now();
+    setState(r, 'queued');
+    Native.call('ensurePermissions').then(function (p) {
+      if (p && p.granted === false) throw Object.assign(new Error('بدون صلاحية التخزين لا يمكن حفظ الملف. اسمح بها من إعدادات الهاتف.'), { code: 'permission' });
+      return Native.call('localMix', {
+        id: jobId, folder: settings.folder, title: (r.customName || '').trim() || 'تركيب',
+        config: {
+          clips: r.clips.map(function (c) { return { uri: c.uri, name: c.name, type: c.type, start: c.start, end: c.end }; }),
+          music: r.music, keepOriginal: r.keepOrig, volume: r.vol, imgDur: r.imgDur, aspect: r.aspect
+        }
+      });
+    }).catch(function (e) {
+      delete rowByJob[jobId]; r.jobId = null;
+      failRow(r, e.code || 'unknown', e.message || 'تعذّر بدء التركيب.');
+    });
+    if (announce) toast('info', 'بدأ تركيب الفيديو…', 2200);
+  }
   function pickFiles(r) {
     Native.call('pickVideos', { multiple: false }).then(function (res) {
       var files = (res && res.files) || [];
@@ -527,6 +641,7 @@
   }
   function startLocal(r, announce) {
     if (!r.url || !r.info) { if (announce) toast('error', 'اختر فيديو من الهاتف أولاً.'); return; }
+    if (r.p.mode === 'mix') return startMix(r, announce);
     var cut = null, mode = r.p.mode === 'mp3' ? 'mp3' : 'cut';
     if (mode === 'cut') {
       cut = cutRange(r);
@@ -782,7 +897,7 @@
       var bar = el('div', 'panel-bar');
       bar.innerHTML = '<div class="panel-title">' + p.icon + '<div>' + p.name + '<span class="panel-sub">' + (p.sub || (ROWS_PER_TAB + ' روابط في نفس الوقت')) + '</span></div></div>' +
         '<div class="bar-actions"><button type="button" class="icon-btn clearall" aria-label="مسح كل المربعات" title="مسح الكل">' + I.x + '</button>' +
-        '<button type="button" class="btn primary sm all">' + I.down + '<span>' + (p.mode === 'cut' ? 'قص الكل' : p.mode === 'mp3' ? 'تحويل الكل' : 'تحميل الكل') + '</span></button></div>';
+        '<button type="button" class="btn primary sm all">' + I.down + '<span>' + (p.mode === 'cut' ? 'قص الكل' : p.mode === 'mix' ? 'تركيب' : p.mode === 'mp3' ? 'تحويل الكل' : 'تحميل الكل') + '</span></button></div>';
       $('.all', bar).addEventListener('click', function () { downloadAll(p); });
       $('.clearall', bar).addEventListener('click', function () { clearAll(p); });
       panel.appendChild(bar);

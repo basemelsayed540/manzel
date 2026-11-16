@@ -2,6 +2,7 @@ package com.manzel.app
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -44,6 +45,24 @@ object Local {
     /** معلومات الملف للمعاينة: الاسم والحجم والمدة وصورة مصغّرة. */
     fun describe(ctx: Context, uri: Uri): JSONObject {
         val ns = nameAndSize(ctx, uri)
+        val mime = try { ctx.contentResolver.getType(uri) ?: "" } catch (e: Exception) { "" }
+        if (mime.startsWith("image/")) {
+            var thumb = ""
+            try {
+                val o = BitmapFactory.Options().apply { inSampleSize = 4 }
+                val bmp = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
+                if (bmp != null) {
+                    val w = 240
+                    val h = (bmp.height * w.toFloat() / bmp.width).toInt().coerceAtLeast(1)
+                    val bos = ByteArrayOutputStream()
+                    Bitmap.createScaledBitmap(bmp, w, h, true).compress(Bitmap.CompressFormat.JPEG, 70, bos)
+                    thumb = "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                }
+            } catch (e: Exception) { /* بدون معاينة */ }
+            return JSONObject().put("uri", uri.toString()).put("name", ns.first).put("size", ns.second)
+                .put("duration", 0.0).put("thumb", thumb).put("type", "image")
+        }
+        val isAudio = mime.startsWith("audio/")
         var durSec = 0.0
         var thumb = ""
         val r = MediaMetadataRetriever()
@@ -67,7 +86,7 @@ object Local {
             try { r.release() } catch (e: Exception) { }
         }
         return JSONObject().put("uri", uri.toString()).put("name", ns.first).put("size", ns.second)
-            .put("duration", durSec).put("thumb", thumb)
+            .put("duration", durSec).put("thumb", thumb).put("type", if (isAudio) "audio" else "video")
     }
 
     private fun durationOf(f: File): Double {
@@ -152,6 +171,139 @@ object Local {
                 if (audio) MediaSaver.Kind.AUDIO else MediaSaver.Kind.VIDEO, job.folder
             )
             Engine.record("done", saved.toJS().put("id", job.id).put("friendly", friendly))
+            DownloadService.notifyDone(ctx, saved.name, true)
+        } finally {
+            procs.remove(job.id)
+            work.deleteRecursively()
+        }
+    }
+
+    private fun hasAudio(f: File): Boolean {
+        val r = MediaMetadataRetriever()
+        return try {
+            r.setDataSource(f.absolutePath)
+            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+        } catch (e: Exception) {
+            false
+        } finally {
+            try { r.release() } catch (e: Exception) { }
+        }
+    }
+
+    private fun copyIn(ctx: Context, uriStr: String, dst: File) {
+        val ins = ctx.contentResolver.openInputStream(Uri.parse(uriStr))
+            ?: throw ManzelError("unavailable", "تعذّر فتح أحد الملفات. اخترها من جديد.")
+        ins.use { s -> dst.outputStream().use { o -> s.copyTo(o) } }
+    }
+
+    private fun extOf(name: String, def: String): String =
+        name.substringAfterLast('.', def).lowercase().filter { it.isLetterOrDigit() }.take(5).ifEmpty { def }
+
+    /** تركيب: دمج فيديوهات وصور (بالترتيب) مع موسيقى اختيارية في فيديو واحد MP4. */
+    fun runMix(ctx: Context, job: Job) {
+        Engine.ensureInit(ctx)
+        job.stage = "processing"
+        Engine.emit("started", JSObject().put("id", job.id))
+        val work = File(ctx.cacheDir, "local/${job.id}")
+        work.deleteRecursively()
+        work.mkdirs()
+        try {
+            val cfg = JSONObject(job.mix)
+            val clips = cfg.getJSONArray("clips")
+            val keep = cfg.optBoolean("keepOriginal", true)
+            val vol = cfg.optDouble("volume", 100.0).coerceIn(0.0, 100.0) / 100.0
+            val imgDur = cfg.optDouble("imgDur", 3.0).coerceIn(1.0, 30.0)
+            val aspect = cfg.optString("aspect", "v")
+            val w = if (aspect == "h") 1280 else 720
+            val h = if (aspect == "v") 1280 else if (aspect == "h") 720 else 720
+            val music = cfg.optJSONObject("music")
+            if (clips.length() == 0) throw ManzelError("format", "أضف فيديو أو صورة واحدة على الأقل.")
+
+            val args = ArrayList<String>()
+            args.addAll(listOf("-y"))
+            val filters = ArrayList<String>()
+            val labels = StringBuilder()
+            var total = 0.0
+            val n = clips.length()
+            for (i in 0 until n) {
+                if (job.cancelled) throw ManzelError("cancelled", "تم الإلغاء")
+                val c = clips.getJSONObject(i)
+                val isImg = c.optString("type") == "image"
+                val ext = extOf(c.optString("name"), if (isImg) "jpg" else "mp4")
+                val f = File(work, "c$i.$ext")
+                copyIn(ctx, c.getString("uri"), f)
+                var len: Double
+                if (isImg) {
+                    len = imgDur
+                    args.addAll(listOf("-loop", "1", "-framerate", "30", "-t", fmt(len), "-i", f.path))
+                } else {
+                    val full = durationOf(f)
+                    val st = c.optDouble("start", -1.0).let { if (it > 0.0) it else 0.0 }
+                    val en = c.optDouble("end", -1.0).let { if (it > 0.0 && (full <= 0.0 || it < full)) it else full }
+                    len = if (en > st) en - st else full
+                    if (len <= 0.0) throw ManzelError("format", "تعذّر قراءة مدة أحد الفيديوهات.")
+                    if (st > 0.0) args.addAll(listOf("-ss", fmt(st)))
+                    args.addAll(listOf("-t", fmt(len), "-i", f.path))
+                }
+                total += len
+                filters.add(
+                    "[$i:v]scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:black," +
+                        "setsar=1,fps=30,format=yuv420p[v$i]"
+                )
+                labels.append("[v$i]")
+                if (keep) {
+                    if (!isImg && hasAudio(f)) {
+                        filters.add("[$i:a]aresample=44100,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[a$i]")
+                    } else {
+                        filters.add("anullsrc=r=44100:cl=stereo,atrim=0:${fmt(len)},asetpts=PTS-STARTPTS[a$i]")
+                    }
+                    labels.append("[a$i]")
+                }
+            }
+            var musicIdx = -1
+            if (music != null && music.optString("uri").isNotEmpty()) {
+                val mf = File(work, "music." + extOf(music.optString("name"), "mp3"))
+                copyIn(ctx, music.getString("uri"), mf)
+                args.addAll(listOf("-stream_loop", "-1", "-i", mf.path))
+                musicIdx = n
+            }
+            filters.add(labels.toString() + "concat=n=$n:v=1:a=${if (keep) 1 else 0}[v]" + (if (keep) "[a]" else ""))
+            var aMap: String? = null
+            if (musicIdx >= 0) {
+                val vs = String.format(java.util.Locale.US, "%.2f", vol)
+                if (keep) {
+                    filters.add("[$musicIdx:a]volume=$vs,aresample=44100,aformat=channel_layouts=stereo[m]")
+                    filters.add("[a][m]amix=inputs=2:duration=first:dropout_transition=0,volume=1.8[ao]")
+                } else {
+                    filters.add("[$musicIdx:a]volume=$vs,aresample=44100,aformat=channel_layouts=stereo[ao]")
+                }
+                aMap = "[ao]"
+            } else if (keep) aMap = "[a]"
+
+            val out = File(work, "out.mp4")
+            val base = args + listOf("-filter_complex", filters.joinToString(";"), "-map", "[v]") +
+                (if (aMap != null) listOf("-map", aMap) else emptyList())
+            val tail = (if (aMap != null) listOf("-c:a", "aac", "-b:a", "160k") else emptyList()) +
+                listOf("-t", fmt(total), "-movflags", "+faststart", out.path)
+            val x264 = base + listOf("-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-r", "30") + tail
+            val mp4v = base + listOf("-c:v", "mpeg4", "-q:v", "4", "-pix_fmt", "yuv420p", "-r", "30") + tail
+            try {
+                exec(ctx, job, x264, total)
+            } catch (e: ManzelError) {
+                if (e.code == "cancelled") throw e
+                out.delete()
+                job.percent = 0.0
+                exec(ctx, job, mp4v, total)
+            }
+            if (job.cancelled) throw ManzelError("cancelled", "تم الإلغاء")
+            if (!out.exists() || out.length() == 0L) throw ManzelError("convert", "لم يُنتج الفيديو. ربما إحدى الصيغ غير مدعومة.")
+
+            job.stage = "saving"
+            job.percent = 100.0
+            Engine.emitProgress(job)
+            val name = MediaSaver.safeName(job.title.ifEmpty { "تركيب" }) + ".mp4"
+            val saved = MediaSaver.save(ctx, out, name, "video/mp4", MediaSaver.Kind.VIDEO, job.folder)
+            Engine.record("done", saved.toJS().put("id", job.id).put("friendly", true))
             DownloadService.notifyDone(ctx, saved.name, true)
         } finally {
             procs.remove(job.id)

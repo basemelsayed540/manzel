@@ -309,9 +309,17 @@ class ManzelPlugin : Plugin() {
     @PluginMethod
     fun pickVideos(call: PluginCall) {
         val multiple = call.getBoolean("multiple", true) ?: true
+        val kind = call.getString("kind") ?: "video"
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "video/*"
+            when (kind) {
+                "audio" -> type = "audio/*"
+                "visual" -> {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/*", "image/*"))
+                }
+                else -> type = "video/*"
+            }
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
@@ -366,6 +374,22 @@ class ManzelPlugin : Plugin() {
                     .put("end", d.getDoubleExtra("end", 0.0))
             )
         } else call.reject("تم إلغاء القص.", "cancelled")
+    }
+
+    @PluginMethod
+    fun localMix(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id مفقود", "bad_request")
+        val cfg = call.getObject("config") ?: return call.reject("الإعدادات مفقودة", "bad_request")
+        val folder = call.getString("folder") ?: "movies"
+        val title = call.getString("title") ?: ""
+        Engine.submit(
+            context,
+            Job(
+                id = id, url = "", formatId = "", recode = false, folder = folder, qualityId = "mix", title = title,
+                mix = cfg.toString(), mode = "mix"
+            )
+        )
+        call.resolve(JSObject().put("queued", true))
     }
 
     @PluginMethod

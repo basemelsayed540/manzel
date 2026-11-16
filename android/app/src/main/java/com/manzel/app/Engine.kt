@@ -34,6 +34,7 @@ class Job(
     val startSec: Double = -1.0,
     val endSec: Double = -1.0,
     val localUri: String = "",
+    val mix: String = "",
     val mode: String = "",
     val precise: Boolean = false
 ) {
@@ -276,6 +277,10 @@ object Engine {
         var ck: File? = null
         try {
             if (job.cancelled) throw ManzelError("cancelled", "تم الإلغاء")
+            if (job.mix.isNotEmpty()) {
+                Local.runMix(ctx, job)
+                return
+            }
             if (job.localUri.isNotEmpty()) {
                 Local.run(ctx, job)
                 return

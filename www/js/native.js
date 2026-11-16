@@ -49,7 +49,12 @@
     loginStatus: function () { return Promise.resolve({ instagram: mockLogin.instagram, facebook: mockLogin.facebook }); },
     openLogin: function (a) { return wait(600).then(function () { mockLogin[a.site] = true; return { saved: true }; }); },
     logout: function (a) { mockLogin[a.site] = false; return Promise.resolve({}); },
-    pickVideos: function () {
+    pickVideos: function (a) {
+      if (a && a.kind === 'audio') return wait(300).then(function () { return { files: [{ uri: 'content://mock/m1', name: 'اغنية.mp3', size: 4e6, duration: 120, thumb: '', type: 'audio' }] }; });
+      if (a && a.kind === 'visual') return wait(300).then(function () { return { files: [
+        { uri: 'content://mock/v1', name: 'رحلة.mp4', size: 48e6, duration: 95, thumb: thumb('#0F766E'), type: 'video' },
+        { uri: 'content://mock/i1', name: 'صورة.jpg', size: 2e6, duration: 0, thumb: thumb('#B45309'), type: 'image' }
+      ] }; });
       return wait(400).then(function () {
         return { files: [
           { uri: 'content://mock/v1', name: 'رحلة العيد.mp4', size: 48e6, duration: 95, thumb: thumb('#0F766E') },
@@ -57,6 +62,7 @@
         ] };
       });
     },
+    localMix: function (a) { return mock.localProcess({ id: a.id, title: a.title, mode: 'mix' }); },
     localProcess: function (a) {
       var id = a.id, pct = 0, audio = a.mode === 'mp3';
       setTimeout(function () { fire('started', { id: id }); }, 50);
